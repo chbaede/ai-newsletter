@@ -40,8 +40,9 @@ def test_e2e_pipeline_in_memory(tmp_path):
     ]
 
     # 1. Deduplication and classification
-    articles, warnings = collect_from_entries(raw_entries)
+    articles, warnings, suppressed = collect_from_entries(raw_entries)
     assert len(articles) == 3
+    assert suppressed == 0
 
     # 2. Clustering
     events, event_articles, clustered_articles = cluster_articles(articles)

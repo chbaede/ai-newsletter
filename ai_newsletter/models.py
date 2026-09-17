@@ -266,14 +266,50 @@ class CollectionMetrics:
     articles_selected: int = 0
     collection_duration: float = 0.0
 
+    # Source-role breakdown of feeds
+    primary_feeds: int = 0
+    research_feeds: int = 0
+    independent_media_feeds: int = 0
+    industry_media_feeds: int = 0
+    community_feeds: int = 0
+    discovery_feeds: int = 0
+    successful_feeds: int = 0
+    failed_feeds: int = 0
+
+    # Event metrics
+    events_created: int = 0
+    events_with_independent_confirmation: int = 0
+    duplicate_suppression_count: int = 0
+
+    # Quality metrics
+    percentage_top_stories_primary: float = 0.0
+    percentage_with_independent_reporting: float = 0.0
+    percentage_discovery_only: float = 0.0
+    average_evidence_diversity: float = 0.0
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "feeds_total": self.feeds_total,
             "feeds_ok": self.feeds_ok,
             "feeds_failed": self.feeds_failed,
+            "successful_feeds": self.successful_feeds or self.feeds_ok,
+            "failed_feeds": self.failed_feeds or self.feeds_failed,
+            "primary_feeds": self.primary_feeds,
+            "research_feeds": self.research_feeds,
+            "independent_media_feeds": self.independent_media_feeds,
+            "industry_media_feeds": self.industry_media_feeds,
+            "community_feeds": self.community_feeds,
+            "discovery_feeds": self.discovery_feeds,
             "articles_collected": self.articles_collected,
             "articles_after_dedupe": self.articles_after_dedupe,
             "articles_selected": self.articles_selected,
+            "events_created": self.events_created,
+            "events_with_independent_confirmation": self.events_with_independent_confirmation,
+            "duplicate_suppression_count": self.duplicate_suppression_count,
+            "percentage_top_stories_primary": round(self.percentage_top_stories_primary, 1),
+            "percentage_with_independent_reporting": round(self.percentage_with_independent_reporting, 1),
+            "percentage_discovery_only": round(self.percentage_discovery_only, 1),
+            "average_evidence_diversity": round(self.average_evidence_diversity, 2),
             "collection_duration": round(self.collection_duration, 4),
         }
 

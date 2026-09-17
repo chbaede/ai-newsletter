@@ -4,7 +4,7 @@ import base64
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
@@ -183,26 +183,45 @@ def parse_feed_entry(entry: dict, source_feed: SourceFeed) -> FeedEntry | None:
     )
 
 
+@dataclass(slots=True)
+class FeedFetchResult:
+    entries: list[FeedEntry]
+    error: str | None = None
+    http_status: int | None = None
+    response_time: float = 0.0
+    parsing_error: str | None = None
+
+
 def fetch_source_feed(
     source_feed: SourceFeed,
     settings: Settings,
     client: httpx.Client,
-) -> tuple[list[FeedEntry], str | None]:
+) -> FeedFetchResult:
     start = time.perf_counter()
+    http_status = None
+    parsing_error = None
     try:
         resp = client.get(
             source_feed.url,
             headers=REQUEST_HEADERS,
             timeout=settings.request_timeout_seconds,
         )
+        http_status = resp.status_code
         resp.raise_for_status()
-        duration = time.perf_counter() - start
+        duration = round(time.perf_counter() - start, 4)
 
         parsed = feedparser.parse(resp.content)
         if parsed.bozo and not parsed.entries:
-            err = f"피드 파싱 실패: {getattr(parsed, 'bozo_exception', 'unknown')}"
+            parsing_error = str(getattr(parsed, 'bozo_exception', 'XML parsing failed'))
+            err = f"피드 파싱 실패: {parsing_error}"
             logger.warning("collector", "feed_parse_error", source=source_feed.id, duration=duration, error=err)
-            return [], err
+            return FeedFetchResult(
+                entries=[],
+                error=err,
+                http_status=http_status,
+                response_time=duration,
+                parsing_error=parsing_error,
+            )
 
         entries: list[FeedEntry] = []
         for raw in parsed.entries[: settings.max_entries_per_feed]:
@@ -211,13 +230,34 @@ def fetch_source_feed(
                 entries.append(parsed_entry)
 
         logger.info("collector", "feed_fetched", source=source_feed.id, duration=duration)
-        return entries, None
+        return FeedFetchResult(
+            entries=entries,
+            error=None,
+            http_status=http_status,
+            response_time=duration,
+            parsing_error=None,
+        )
 
+    except httpx.HTTPStatusError as exc:
+        duration = round(time.perf_counter() - start, 4)
+        err = f"HTTP {exc.response.status_code}: {exc}"
+        logger.warning("collector", "feed_fetch_failed", source=source_feed.id, duration=duration, error=err)
+        return FeedFetchResult(
+            entries=[],
+            error=err,
+            http_status=exc.response.status_code,
+            response_time=duration,
+        )
     except Exception as exc:
-        duration = time.perf_counter() - start
+        duration = round(time.perf_counter() - start, 4)
         err = str(exc)
         logger.warning("collector", "feed_fetch_failed", source=source_feed.id, duration=duration, error=err)
-        return [], err
+        return FeedFetchResult(
+            entries=[],
+            error=err,
+            http_status=http_status,
+            response_time=duration,
+        )
 
 
 def collect_from_entries(
@@ -225,11 +265,12 @@ def collect_from_entries(
     recent_articles: Iterable[Article] | None = None,
     summarizer: BaseSummarizer | None = None,
     settings: Settings | None = None,
-) -> tuple[list[Article], list[str]]:
+) -> tuple[list[Article], list[str], int]:
     articles: list[Article] = []
     seen_urls: set[str] = set()
     seen_titles: set[str] = set()
     title_index: dict[str, list[str]] = {}
+    suppressed_count = 0
 
     if recent_articles:
         for past in recent_articles:
@@ -248,12 +289,14 @@ def collect_from_entries(
         if not canonical_url or not title_key:
             continue
         if canonical_url in seen_urls or title_key in seen_titles:
+            suppressed_count += 1
             continue
 
         tokens = extract_title_tokens(entry.title)
         if tokens:
             candidates = {cand for tok in tokens for cand in title_index.get(tok, [])}
             if any(are_titles_similar(cand, entry.title) for cand in candidates):
+                suppressed_count += 1
                 continue
 
         seen_urls.add(canonical_url)
@@ -291,7 +334,7 @@ def collect_from_entries(
         )
         articles.append(classified)
 
-    return articles, []
+    return articles, [], suppressed_count
 
 
 def collect_and_store(
@@ -310,6 +353,29 @@ def collect_and_store(
     feeds_ok = 0
     feeds_failed = 0
 
+    # Source-role feed counts
+    primary_feeds = 0
+    research_feeds = 0
+    independent_media_feeds = 0
+    industry_media_feeds = 0
+    community_feeds = 0
+    discovery_feeds = 0
+
+    for feed in active_sources:
+        lvl = feed.evidence_level or "industry_media"
+        if lvl == "primary":
+            primary_feeds += 1
+        elif lvl == "research":
+            research_feeds += 1
+        elif lvl == "independent":
+            independent_media_feeds += 1
+        elif lvl == "community":
+            community_feeds += 1
+        elif lvl == "discovery":
+            discovery_feeds += 1
+        else:
+            industry_media_feeds += 1
+
     with httpx.Client(verify=settings.verify_tls) as client:
         with ThreadPoolExecutor(max_workers=8) as executor:
             future_to_feed = {
@@ -319,7 +385,8 @@ def collect_and_store(
             for future in as_completed(future_to_feed):
                 feed = future_to_feed[future]
                 try:
-                    entries, err = future.result()
+                    res = future.result()
+                    entries, err = res.entries, res.error
                 except Exception as exc:
                     entries, err = [], str(exc)
                 if err:
@@ -331,7 +398,7 @@ def collect_and_store(
 
     recent = store.recent_articles(days=3)
     summarizer = get_summarizer(settings)
-    articles, dedupe_warnings = collect_from_entries(
+    articles, dedupe_warnings, suppressed_count = collect_from_entries(
         all_entries,
         recent_articles=recent,
         summarizer=summarizer,
@@ -345,6 +412,37 @@ def collect_and_store(
     # Select top articles per category / priority
     clustered_articles.sort(key=lambda a: a.priority_score, reverse=True)
 
+    # Compute quality metrics
+    total_events = len(events)
+    events_with_ind = sum(
+        1 for ev in events
+        if ev.verification_status in {"independently_reported", "multi_source"}
+        or len(ev.independent_sources) > 0
+    )
+    avg_diversity = (
+        sum(ev.evidence_diversity for ev in events) / total_events
+        if total_events > 0
+        else 0.0
+    )
+
+    top_stories = clustered_articles[:5]
+    top_total = len(top_stories)
+    pct_top_primary = (
+        (sum(1 for a in top_stories if a.is_primary_source or a.evidence_level == "primary") / top_total * 100)
+        if top_total > 0
+        else 0.0
+    )
+    pct_with_ind = (
+        (sum(1 for a in clustered_articles if a.is_independent_source or a.event_independent_source_count > 0 or a.evidence_level == "independent") / len(clustered_articles) * 100)
+        if clustered_articles
+        else 0.0
+    )
+    pct_discovery = (
+        (sum(1 for a in clustered_articles if a.is_discovery_source or a.evidence_level == "discovery") / len(clustered_articles) * 100)
+        if clustered_articles
+        else 0.0
+    )
+
     metrics = CollectionMetrics(
         feeds_total=len(active_sources),
         feeds_ok=feeds_ok,
@@ -353,6 +451,21 @@ def collect_and_store(
         articles_after_dedupe=len(clustered_articles),
         articles_selected=len(clustered_articles),
         collection_duration=time.perf_counter() - start_time,
+        primary_feeds=primary_feeds,
+        research_feeds=research_feeds,
+        independent_media_feeds=independent_media_feeds,
+        industry_media_feeds=industry_media_feeds,
+        community_feeds=community_feeds,
+        discovery_feeds=discovery_feeds,
+        successful_feeds=feeds_ok,
+        failed_feeds=feeds_failed,
+        events_created=total_events,
+        events_with_independent_confirmation=events_with_ind,
+        duplicate_suppression_count=suppressed_count,
+        percentage_top_stories_primary=pct_top_primary,
+        percentage_with_independent_reporting=pct_with_ind,
+        percentage_discovery_only=pct_discovery,
+        average_evidence_diversity=avg_diversity,
     )
 
     issue = NewsletterIssue(
@@ -390,15 +503,41 @@ def check_feed_health(
             for future in as_completed(future_to_feed):
                 feed = future_to_feed[future]
                 try:
-                    entries, err = future.result()
+                    res = future.result()
+                    entries, err = res.entries, res.error
+                    http_status = res.http_status
+                    resp_time = res.response_time
+                    parsing_err = res.parsing_error
                 except Exception as exc:
                     entries, err = [], str(exc)
+                    http_status = None
+                    resp_time = 0.0
+                    parsing_err = None
+
+                # Source health classification: healthy, degraded, failing, disabled
+                if not feed.enabled:
+                    health_state = "disabled"
+                elif err:
+                    health_state = "failing"
+                elif len(entries) == 0 or (resp_time > 5.0):
+                    health_state = "degraded"
+                else:
+                    health_state = "healthy"
+
                 results.append({
                     "id": feed.id,
                     "name": feed.name,
                     "url": feed.url,
                     "status": "ok" if not err else "error",
+                    "health_state": health_state,
                     "entries_count": len(entries),
+                    "http_status": http_status,
+                    "response_time": resp_time,
+                    "parsing_error": parsing_err,
+                    "feed_type": feed.discovery_method,
+                    "source_role": feed.evidence_level,
                     "error": err,
+                    "last_successful_fetch": datetime.now(timezone.utc).isoformat() if not err else None,
+                    "consecutive_failures": 1 if err else 0,
                 })
     return results
