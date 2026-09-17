@@ -24,6 +24,7 @@ def test_store_save_and_retrieve_issue(test_store):
             summary_en="OpenAI announced GPT-4o with native multimodal features.",
             why_it_matters_ko="멀티모달 인터랙션의 지연시간을 획기적으로 개선했습니다.",
             why_it_matters_en="Dramatically reduces latency for multimodal interactions.",
+            evidence_quality_score=96.0,
             priority_score=92.0,
             tags=["OpenAI", "LLM"],
         )
@@ -59,6 +60,7 @@ def test_store_save_and_retrieve_issue(test_store):
     assert retrieved.articles[0].summary_en == "OpenAI announced GPT-4o with native multimodal features."
     assert retrieved.articles[0].why_it_matters_ko == "멀티모달 인터랙션의 지연시간을 획기적으로 개선했습니다."
     assert retrieved.articles[0].why_it_matters_en == "Dramatically reduces latency for multimodal interactions."
+    assert retrieved.articles[0].evidence_quality_score == 96.0
     assert len(retrieved.events) == 1
     assert retrieved.events[0].event_id == "ev_test1"
 

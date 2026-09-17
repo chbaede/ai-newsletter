@@ -100,6 +100,11 @@ class ScoringResult:
     recency_score: float
     priority_score: float
     explanation: ScoreExplanation
+    evidence_quality_score: float = 0.0
+
+    @property
+    def source_authority_score(self) -> float:
+        return self.source_score
 
 
 def compute_source_score(article: Article) -> float:
@@ -129,6 +134,87 @@ def compute_source_score(article: Article) -> float:
         score = base
 
     return round(max(10.0, min(100.0, score)), 1)
+
+
+def compute_evidence_quality_score(article: Article) -> float:
+    """
+    Computes evidence quality score based on the source's epistemic role.
+    Distinct from source authority (institution prominence) and article importance (impact).
+
+    Evidence levels and typical scores:
+    - Primary source (official corporate/lab launch, regulator rule): 96.0 - 98.0
+    - Independent reporting (reputable journalism with direct reporting): 94.0
+    - Research (academic lab / peer-reviewed: 94.0; preprint e.g. arXiv: 88.0)
+    - Industry media (curated news / trade reporting): 78.0
+    - Community discussion (forums, social tech hubs, blogs): 55.0
+    - Discovery / Aggregator (Google News, search feeds): 40.0
+
+    CRITICAL RULE:
+    Discovery/aggregator mechanisms (e.g. Google News) MUST NOT receive a high
+    evidence quality score even if the destination article has a high-authority publisher.
+    """
+    source_type = (article.source_type or "").lower()
+    source_name = (article.source or "").lower()
+    publisher = (article.publisher or "").lower()
+    evidence_level = (article.evidence_level or "").lower()
+    url = (article.url or "").lower()
+
+    # 1. Discovery / Aggregator check:
+    # If the source feed is a discovery mechanism (like Google News) or marked as discovery aggregator,
+    # it must remain low (<= 42.0) regardless of the publisher or destination authority.
+    if (
+        article.is_discovery_source
+        or evidence_level == "discovery"
+        or source_type == "aggregator"
+        or "google news" in source_name
+        or "google news" in publisher
+        or "news.google.com" in url
+    ):
+        return 40.0
+
+    # 2. Primary source check:
+    # Official announcements by creators, primary press releases, or regulatory bodies.
+    if (
+        article.is_primary_source
+        or evidence_level == "primary"
+        or source_type in {"official", "regulator", "press_release"}
+    ):
+        if source_type == "regulator" or any(s in publisher or s in source_name for s in ["eu ai office", "nist", "과기정통부"]):
+            return 98.0
+        return 96.0
+
+    # 3. Independent journalism / investigative reporting:
+    if (
+        article.is_independent_source
+        or evidence_level == "independent"
+    ):
+        return 94.0
+
+    # 4. Research: preprints vs academic / institutional labs:
+    if (
+        evidence_level == "research"
+        or source_type in {"research", "paper", "preprint"}
+    ):
+        full_text = f"{source_name} {publisher} {url}"
+        if any(term in full_text for term in ["arxiv", "biorxiv", "medrxiv", "preprint"]):
+            return 88.0
+        return 94.0
+
+    # 5. Community sources (HN, Reddit, forums, individual developer blogs):
+    if (
+        evidence_level == "community"
+        or source_type in {"community", "forum", "blog"}
+    ):
+        return 55.0
+
+    # 6. Industry media / curated news outlets:
+    if (
+        evidence_level == "industry_media"
+        or source_type in {"media", "news"}
+    ):
+        return 78.0
+
+    return 70.0
 
 
 def compute_relevance_score(article: Article) -> float:
@@ -244,15 +330,17 @@ def compute_multi_dimensional_scores(
     half_life_hours: float = 36.0,
 ) -> ScoringResult:
     src = compute_source_score(article)
+    evq = compute_evidence_quality_score(article)
     rel = compute_relevance_score(article)
     imp = compute_impact_score(article)
     nov = compute_novelty_score(article, past_articles=past_articles)
     rec = compute_recency_score(article, ref_time=ref_time, half_life_hours=half_life_hours)
 
     base_priority = (
-        0.30 * rel
+        0.25 * rel
         + 0.25 * imp
-        + 0.20 * src
+        + 0.15 * src
+        + 0.10 * evq
         + 0.15 * rec
         + 0.10 * nov
     )
@@ -274,6 +362,25 @@ def compute_multi_dimensional_scores(
     priority = base_priority + synergy_boost - low_signal_penalty
     priority = round(max(10.0, min(100.0, priority)), 1)
 
+    is_preprint = False
+    evidence_lvl = article.evidence_level
+    if (
+        article.is_discovery_source
+        or (article.source_type or "").lower() == "aggregator"
+        or "google news" in (article.source or "").lower()
+        or "google news" in (article.publisher or "").lower()
+    ):
+        evidence_lvl = "discovery"
+    elif article.is_primary_source and evidence_lvl != "discovery":
+        evidence_lvl = "primary"
+    elif article.is_independent_source and evidence_lvl != "discovery":
+        evidence_lvl = "independent"
+
+    if evidence_lvl == "research" or (article.source_type or "").lower() in {"research", "paper", "preprint"}:
+        full_text = f"{article.source or ''} {article.publisher or ''} {article.url or ''}".lower()
+        if any(term in full_text for term in ["arxiv", "biorxiv", "medrxiv", "preprint"]):
+            is_preprint = True
+
     explanation = build_score_explanation(
         source_score=src,
         relevance_score=rel,
@@ -281,6 +388,9 @@ def compute_multi_dimensional_scores(
         novelty_score=nov,
         recency_score=rec,
         priority_score=priority,
+        evidence_quality_score=evq,
+        evidence_level=evidence_lvl,
+        is_preprint=is_preprint,
         impact_authority_boost=impact_authority_boost > 0,
         frontier_impact_boost=frontier_impact_boost > 0,
         low_signal_penalty=low_signal_penalty > 0,
@@ -294,6 +404,7 @@ def compute_multi_dimensional_scores(
         recency_score=rec,
         priority_score=priority,
         explanation=explanation,
+        evidence_quality_score=evq,
     )
 
 
@@ -304,12 +415,39 @@ def build_score_explanation(
     novelty_score: float,
     recency_score: float,
     priority_score: float,
+    evidence_quality_score: float = 0.0,
+    evidence_level: str = "",
+    is_preprint: bool = False,
     impact_authority_boost: bool = False,
     frontier_impact_boost: bool = False,
     low_signal_penalty: bool = False,
 ) -> ScoreExplanation:
     reasons_ko: list[str] = []
     reasons_en: list[str] = []
+
+    # Evidence type explanation (factual, neutral)
+    if evidence_level == "discovery":
+        reasons_ko.append("검색 집계 출처")
+        reasons_en.append("Discovery source")
+    elif evidence_level == "primary":
+        reasons_ko.append("공식 발표 출처")
+        reasons_en.append("Primary source")
+    elif evidence_level == "independent":
+        reasons_ko.append("독립 취재 출처")
+        reasons_en.append("Independent reporting")
+    elif evidence_level == "research":
+        if is_preprint:
+            reasons_ko.append("연구기관 사전 논문 (Preprint) 출처")
+            reasons_en.append("Research preprint source")
+        else:
+            reasons_ko.append("공인 학술·연구기관 출처")
+            reasons_en.append("Research source")
+    elif evidence_level == "industry_media":
+        reasons_ko.append("산업 전문 보도 출처")
+        reasons_en.append("Industry media coverage")
+    elif evidence_level == "community":
+        reasons_ko.append("커뮤니티 논의 출처")
+        reasons_en.append("Community discussion source")
 
     if impact_authority_boost:
         reasons_ko.append("공식 기관·선도 기업의 주요 발표")

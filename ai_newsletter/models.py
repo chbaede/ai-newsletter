@@ -95,7 +95,9 @@ class Article:
     impact_score: float = 0.0
     novelty_score: float = 0.0
     recency_score: float = 0.0
+    evidence_quality_score: float = 0.0
     priority_score: float = 0.0
+    evidence_explanation: str = ""
 
     # Relationships & Event Metadata
     event_id: str | None = None
@@ -180,6 +182,10 @@ class Article:
 
         if self.collected_at is None:
             self.collected_at = datetime.now(timezone.utc)
+
+    @property
+    def source_authority_score(self) -> float:
+        return self.source_score
 
 
 @dataclass(slots=True)

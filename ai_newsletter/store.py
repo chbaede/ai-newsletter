@@ -74,6 +74,7 @@ class NewsletterStore:
                     impact_score real not null default 0,
                     novelty_score real not null default 0,
                     recency_score real not null default 0,
+                    evidence_quality_score real not null default 0,
                     priority_score real not null default 0,
                     event_id text,
                     event_title text,
@@ -101,6 +102,8 @@ class NewsletterStore:
                 conn.execute("alter table articles add column is_discovery_source integer not null default 0")
             if "evidence_level" not in article_cols:
                 conn.execute("alter table articles add column evidence_level text not null default 'industry_media'")
+            if "evidence_quality_score" not in article_cols:
+                conn.execute("alter table articles add column evidence_quality_score real not null default 0")
             conn.execute(
                 """
                 create table if not exists events (
@@ -232,6 +235,7 @@ class NewsletterStore:
                         discovered_via, source_type, source_authority,
                         primary_category, secondary_categories, topics, entities,
                         source_score, relevance_score, impact_score, novelty_score, recency_score,
+                        evidence_quality_score,
                         priority_score, event_id, event_title, related_article_ids,
                         is_official, is_reference, is_primary_source,
                         is_independent_source, is_discovery_source, evidence_level,
@@ -247,6 +251,7 @@ class NewsletterStore:
                         ?, ?, ?,
                         ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
+                        ?,
                         ?, ?, ?, ?,
                         ?, ?, ?,
                         ?, ?, ?,
@@ -289,6 +294,7 @@ class NewsletterStore:
                         article.impact_score,
                         article.novelty_score,
                         article.recency_score,
+                        article.evidence_quality_score,
                         article.priority_score,
                         article.event_id,
                         article.event_title,
@@ -527,6 +533,7 @@ class NewsletterStore:
             impact_score=row["impact_score"] or 0.0,
             novelty_score=row["novelty_score"] or 0.0,
             recency_score=row["recency_score"] or 0.0,
+            evidence_quality_score=row["evidence_quality_score"] if "evidence_quality_score" in keys and row["evidence_quality_score"] is not None else 0.0,
             priority_score=row["priority_score"] or 0.0,
             event_id=row["event_id"],
             event_title=row["event_title"],

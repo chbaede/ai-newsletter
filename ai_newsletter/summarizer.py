@@ -256,7 +256,7 @@ def classify_article(
         summary_created_at=summary_result.summary_created_at,
     )
 
-    # Compute 5-dimensional scores
+    # Compute multi-dimensional scores
     scores = compute_multi_dimensional_scores(scored_article)
     scored_article = replace(
         scored_article,
@@ -267,6 +267,8 @@ def classify_article(
         impact_score=scores.impact_score,
         novelty_score=scores.novelty_score,
         recency_score=scores.recency_score,
+        evidence_quality_score=scores.evidence_quality_score,
+        evidence_explanation=scores.explanation.summary_ko,
     )
     return scored_article
 
