@@ -1,0 +1,388 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="history-rail google-anno-skip">
+    <div class="brand google-anno-skip">
+      <span class="brand-mark" title="클릭하여 관리자 모드 전환">AI</span>
+      <div>
+        <h1 class="google-anno-skip">
+          <span class="lang-ko">AI 뉴스레터</span>
+          <span class="lang-en" style="display:none;">AI Newsletter</span>
+        </h1>
+        <p>Frontier · Agents · Chips · Policy</p>
+      </div>
+    </div>
+    <form class="collect-form" data-collect-form data-admin-only>
+      <button type="submit" class="primary-action">
+        <i data-lucide="refresh-cw"></i>
+        <span>
+          <span class="lang-ko">새로 수집</span>
+          <span class="lang-en" style="display:none;">Collect News</span>
+        </span>
+      </button>
+    </form>
+    <nav class="history-list" aria-label="히스토리">
+      <div class="rail-label">
+        <span class="lang-ko">발행 히스토리</span>
+        <span class="lang-en" style="display:none;">History</span>
+      </div>
+      {% for item in history %}
+        <a class="history-item {% if issue and issue.issue_date == item.issue_date %}active{% endif %}" href="/issues/{{ item.issue_date }}">
+          <span>{{ item.issue_date }}</span>
+          <small>
+            {{ item.article_count }}<span class="lang-ko">건</span><span class="lang-en" style="display:none;"> items</span>
+          </small>
+        </a>
+      {% else %}
+        <p class="empty-note">
+          <span class="lang-ko">아직 저장된 이슈가 없습니다.</span>
+          <span class="lang-en" style="display:none;">No issues saved yet.</span>
+        </p>
+      {% endfor %}
+    </nav>
+  </aside>
+
+  <main class="issue-workspace">
+    <nav class="view-tabs" aria-label="화면 탭">
+      <button type="button" class="view-tab active" data-view-tab="news" aria-pressed="true">
+        <i data-lucide="newspaper"></i>
+        <span>
+          <span class="lang-ko">뉴스</span>
+          <span class="lang-en" style="display:none;">News</span>
+        </span>
+      </button>
+      <button type="button" class="view-tab" data-view-tab="settings" data-admin-only aria-pressed="false">
+        <i data-lucide="settings"></i>
+        <span>
+          <span class="lang-ko">메일 설정</span>
+          <span class="lang-en" style="display:none;">Mail Settings</span>
+        </span>
+      </button>
+      <button type="button" class="view-tab" data-view-tab="sources" aria-pressed="false">
+        <i data-lucide="activity"></i>
+        <span>
+          <span class="lang-ko">소스 상태</span>
+          <span class="lang-en" style="display:none;">Source Health</span>
+        </span>
+      </button>
+
+      <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
+        <button type="button" class="lang-toggle-action" data-lang-toggle title="언어 전환 (KO / EN)">
+          <i data-lucide="languages"></i>
+          <span class="lang-text">EN</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- News Panel -->
+    <section data-view-panel="news">
+    {% if issue %}
+      <header class="issue-header">
+        <div>
+          <p class="eyebrow">{{ issue.issue_date }}</p>
+          <h2>
+            <span class="lang-ko">AI 산업 인텔리전스 브리핑</span>
+            <span class="lang-en" style="display:none;">AI Industry Intelligence Brief</span>
+          </h2>
+          <p class="subtitle">
+            <span class="lang-ko">프론티어 모델, 자율 에이전트, 반도체 및 규제 동향을 우선순위 중심으로 분석했습니다.</span>
+            <span class="lang-en" style="display:none;">Prioritized intelligence on frontier models, autonomous agents, semiconductors, and policy.</span>
+          </p>
+        </div>
+        <div class="header-actions" style="display: flex; gap: 0.5rem;">
+          <form data-send-form data-issue-date="{{ issue.issue_date }}" data-admin-only>
+            <button type="submit" class="send-action">
+              <i data-lucide="send"></i>
+              <span>
+                <span class="lang-ko">메일 발송</span>
+                <span class="lang-en" style="display:none;">Send Email</span>
+              </span>
+            </button>
+          </form>
+        </div>
+      </header>
+
+      <section class="issue-metrics" aria-label="Executive Snapshot">
+        <div class="metrics-heading">
+          <p class="eyebrow">Executive Snapshot</p>
+          <span class="metrics-live">
+            <span class="live-dot"></span>
+            <span class="lang-ko">우선순위 지표</span>
+            <span class="lang-en" style="display:none;">Priority Metrics</span>
+          </span>
+        </div>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">
+              <span class="lang-ko">총 브리핑</span>
+              <span class="lang-en" style="display:none;">Total News</span>
+            </div>
+            <div class="metric-val">{{ issue_metrics.total }}</div>
+          </div>
+          <div class="metric-card critical">
+            <div class="metric-label">
+              <span class="lang-ko">최우선 뉴스</span>
+              <span class="lang-en" style="display:none;">Critical</span>
+            </div>
+            <div class="metric-val">{{ issue_metrics.critical }}</div>
+          </div>
+          <div class="metric-card high">
+            <div class="metric-label">
+              <span class="lang-ko">높음</span>
+              <span class="lang-en" style="display:none;">High</span>
+            </div>
+            <div class="metric-val">{{ issue_metrics.high }}</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Filter Bars -->
+      <div class="filter-controls">
+        <div class="filter-group">
+          <span class="filter-label">
+            <span class="lang-ko">지역</span>
+            <span class="lang-en" style="display:none;">Region</span>
+          </span>
+          <div class="filter-pills">
+            {% for r in ui_region_filters %}
+              <button type="button" class="filter-pill {% if r.key == 'all' %}active{% endif %}" data-region-filter="{{ r.key }}">
+                <span class="lang-ko">{{ r.label_ko }}</span>
+                <span class="lang-en" style="display:none;">{{ r.label_en }}</span>
+                {% if region_counts.get(r.key) %}
+                  <span class="pill-count">{{ region_counts.get(r.key) }}</span>
+                {% endif %}
+              </button>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">
+            <span class="lang-ko">토픽</span>
+            <span class="lang-en" style="display:none;">Topic</span>
+          </span>
+          <div class="filter-pills">
+            {% for t in topic_filters %}
+              <button type="button" class="filter-pill {% if t.key == 'all' %}active{% endif %}" data-topic-filter="{{ t.key }}">
+                <span>{{ t.label }}</span>
+                {% if topic_counts.get(t.key) %}
+                  <span class="pill-count">{{ topic_counts.get(t.key) }}</span>
+                {% endif %}
+              </button>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">
+            <span class="lang-ko">출처 분류</span>
+            <span class="lang-en" style="display:none;">Source</span>
+          </span>
+          <div class="filter-pills">
+            {% for s in source_type_filters %}
+              <button type="button" class="filter-pill {% if s.key == 'all' %}active{% endif %}" data-source-type-filter="{{ s.key }}">
+                <span class="lang-ko">{{ s.label_ko }}</span>
+                <span class="lang-en" style="display:none;">{{ s.label_en }}</span>
+                {% if source_type_counts.get(s.key) %}
+                  <span class="pill-count">{{ source_type_counts.get(s.key) }}</span>
+                {% endif %}
+              </button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <p class="empty-note" data-filter-empty style="display:none;">
+        <span class="lang-ko">선택한 필터 조건에 해당하는 기사가 없습니다.</span>
+        <span class="lang-en" style="display:none;">No articles match the selected filters.</span>
+      </p>
+
+      <!-- Sections & Article Cards -->
+      {% for sec in sections %}
+        {% if sec.articles %}
+          <section class="issue-section" data-section-key="{{ sec.key }}">
+            <div class="section-header">
+              <h3>
+                <span class="lang-ko">{{ sec.label_ko }}</span>
+                <span class="lang-en" style="display:none;">{{ sec.label_en }}</span>
+              </h3>
+              <p>
+                <span class="lang-ko">{{ sec.subtitle_ko }}</span>
+                <span class="lang-en" style="display:none;">{{ sec.subtitle_en }}</span>
+              </p>
+            </div>
+
+            <div class="card-grid">
+              {% for view in sec.article_views %}
+                <article class="article-card"
+                         data-regions="{{ view.all_region_keys|join(' ') }}"
+                         data-topics="{{ view.topic_keys|join(' ') }}"
+                         data-source-type="{{ view.source_type }}">
+                  <div class="card-meta">
+                    <span class="priority-badge {{ view.priority.level }}">
+                      <span class="lang-ko">{{ view.priority.label_ko }}</span>
+                      <span class="lang-en" style="display:none;">{{ view.priority.label_en }}</span>
+                      <span class="score-num">{{ view.priority.score }}</span>
+                    </span>
+                    <span class="publisher-name">{{ view.publisher_display }}</span>
+                    {% if view.coverage and view.coverage.source_count > 1 %}
+                      <span class="coverage-pill" title="{{ view.coverage.related_sources|join(', ') }}">
+                        <i data-lucide="layers" style="width:11px;height:11px;"></i>
+                        <span class="lang-ko">{{ view.coverage.label_ko }}</span>
+                        <span class="lang-en" style="display:none;">{{ view.coverage.label_en }}</span>
+                      </span>
+                    {% endif %}
+                    <span class="pub-time">{{ view.published_time }}</span>
+                  </div>
+
+                  <h4 class="article-title">
+                    <a href="{{ view.source_url }}" target="_blank" rel="noopener noreferrer">
+                      <span class="lang-ko">{{ view.title_ko }}</span>
+                      <span class="lang-en" style="display:none;">{{ view.title_en }}</span>
+                    </a>
+                  </h4>
+
+                  <div class="article-summary">
+                    <p class="lang-ko">{{ view.factual_summary_ko }}</p>
+                    <p class="lang-en" style="display:none;">{{ view.factual_summary_en }}</p>
+                  </div>
+
+                  {% if view.why_it_matters_ko %}
+                    <div class="why-it-matters">
+                      <div class="lang-ko">
+                        <strong>시사점:</strong> {{ view.why_it_matters_ko }}
+                      </div>
+                      <div class="lang-en" style="display:none;">
+                        <strong>Impact:</strong> {{ view.why_it_matters_en }}
+                      </div>
+                    </div>
+                  {% endif %}
+
+                  {% if view.article.key_points %}
+                    <ul class="key-points-list">
+                      {% for pt in view.article.key_points %}
+                        <li>{{ pt }}</li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
+
+                  <div class="card-footer">
+                    <div class="tags-row">
+                      {% for tag in view.user_tags[:4] %}
+                        <span class="tag-pill">{{ tag }}</span>
+                      {% endfor %}
+                    </div>
+                    <a href="{{ view.source_url }}" class="read-link" target="_blank" rel="noopener noreferrer">
+                      <span class="lang-ko">원문 보기</span>
+                      <span class="lang-en" style="display:none;">Read More</span>
+                      <i data-lucide="external-link" style="width:12px;height:12px;"></i>
+                    </a>
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+        {% endif %}
+      {% endfor %}
+
+    {% else %}
+      <div class="empty-state">
+        <i data-lucide="inbox" style="width:48px;height:48px;color:#94a3b8;margin-bottom:12px;"></i>
+        <h3>
+          <span class="lang-ko">저장된 AI 뉴스레터 이슈가 없습니다.</span>
+          <span class="lang-en" style="display:none;">No AI Newsletter issue saved yet.</span>
+        </h3>
+        <p>
+          <span class="lang-ko">좌측 상단의 '새로 수집' 버튼을 눌러 최신 AI 뉴스를 수집해 보세요.</span>
+          <span class="lang-en" style="display:none;">Click 'Collect News' on the left rail to trigger a collection.</span>
+        </p>
+      </div>
+    {% endif %}
+    </section>
+
+    <!-- Mail Settings Panel -->
+    <section data-view-panel="settings" style="display:none;" data-admin-only>
+      <div class="panel-header">
+        <h3>
+          <span class="lang-ko">이메일 SMTP 발송 설정</span>
+          <span class="lang-en" style="display:none;">Mail SMTP Configuration</span>
+        </h3>
+        <p>
+          <span class="lang-ko">뉴스레터 이메일 발송에 필요한 SMTP 서버 및 수신자 정보를 관리합니다.</span>
+          <span class="lang-en" style="display:none;">Manage outbound SMTP credentials and newsletter subscriber addresses.</span>
+        </p>
+      </div>
+      <form class="settings-form" data-mail-settings-form>
+        <div class="form-row">
+          <label>SMTP Host</label>
+          <input type="text" name="smtp_host" placeholder="smtp.gmail.com">
+        </div>
+        <div class="form-row">
+          <label>SMTP Port</label>
+          <input type="number" name="smtp_port" value="587">
+        </div>
+        <div class="form-row">
+          <label>SMTP User (Username / Email)</label>
+          <input type="text" name="smtp_user" placeholder="user@example.com">
+        </div>
+        <div class="form-row">
+          <label>SMTP Password <small data-password-state style="color:#64748b;margin-left:6px;"></small></label>
+          <input type="password" name="smtp_password" placeholder="App Password">
+        </div>
+        <div class="form-row">
+          <label>Sender Address (From)</label>
+          <input type="text" name="smtp_from" placeholder="AI Newsletter <newsletter@example.com>">
+        </div>
+        <div class="form-row">
+          <label>Recipients (Newsletter To)</label>
+          <input type="text" name="newsletter_to" placeholder="subscriber1@example.com, subscriber2@example.com">
+        </div>
+        <div class="form-row checkbox-row">
+          <label>
+            <input type="checkbox" name="smtp_tls" checked>
+            <span>STARTTLS 보안 연결 사용</span>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="primary-action">
+            <span class="lang-ko">설정 저장</span>
+            <span class="lang-en" style="display:none;">Save Settings</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Source Health Panel -->
+    <section data-view-panel="sources" style="display:none;">
+      <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h3>
+            <span class="lang-ko">데이터 소스 연결 상태</span>
+            <span class="lang-en" style="display:none;">Data Sources Health</span>
+          </h3>
+          <p data-source-health-summary>
+            <span class="lang-ko">외부 RSS 및 타깃 검색 피드 상태를 점검합니다.</span>
+            <span class="lang-en" style="display:none;">Monitor live connectivity to all external feeds.</span>
+          </p>
+        </div>
+        <button type="button" class="primary-action" data-source-health-action data-admin-only>
+          <i data-lucide="refresh-cw"></i>
+          <span>
+            <span class="lang-ko">상태 재확인</span>
+            <span class="lang-en" style="display:none;">Recheck Health</span>
+          </span>
+        </button>
+      </div>
+      <div class="source-health-list" data-source-health-list>
+        <p class="empty-note">
+          <span class="lang-ko">'소스 상태' 탭을 선택하면 피드 상태를 점검합니다.</span>
+          <span class="lang-en" style="display:none;">Select tab to test source feeds connectivity.</span>
+        </p>
+      </div>
+    </section>
+
+    <div class="status-toast" data-status></div>
+  </main>
+</div>
+{% endblock %}
+

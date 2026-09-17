@@ -1,0 +1,436 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from datetime import date, datetime
+from typing import Any
+from urllib.parse import urlsplit
+
+from .models import Article, NewsletterIssue
+from .priority import LEVELS, assess_priority
+from .taxonomy import CATEGORY_LABELS_EN, CATEGORY_LABELS_KO
+
+HANGUL_RE = re.compile(r"[가-힣]")
+
+
+@dataclass(frozen=True, slots=True)
+class RegionSignal:
+    key: str
+    label_ko: str
+    label_en: str
+
+
+UI_REGION_FILTERS = [
+    RegionSignal("all", "전체", "All"),
+    RegionSignal("global", "글로벌", "Global"),
+    RegionSignal("us", "미국", "US"),
+    RegionSignal("korea", "한국", "Korea"),
+    RegionSignal("europe", "유럽", "Europe"),
+    RegionSignal("asia", "아시아", "Asia"),
+]
+
+REGION_FILTERS = UI_REGION_FILTERS
+REGION_LABELS = {r.key: r.label_ko for r in REGION_FILTERS}
+
+REGION_TERMS = {
+    "us": [
+        "united states", "usa", "u.s.", "america", "san francisco", "silicon valley",
+        "seattle", "austin", "new york", "california", "openai", "anthropic", "google",
+        "meta", "microsoft", "nvidia", "apple", "amazon", "xai", "cursor", "devin",
+    ],
+    "korea": [
+        "korea", "south korea", "korean", "seoul", "pangyo", "한국", "서울", "판교",
+        "네이버", "카카오", "naver", "kakao", "upstage", "업스테이지", "lg ai", "exaone",
+        "sk하이닉스", "삼성전자", "과기정통부", "ai기본법", "리벨리온", "퓨리오사", "wrtn",
+    ],
+    "europe": [
+        "europe", "eu", "france", "germany", "uk", "united kingdom", "london", "paris",
+        "berlin", "mistral", "deepmind", "eu ai act", "european commission", "brussels",
+    ],
+    "asia": [
+        "asia", "china", "japan", "taiwan", "singapore", "tsmc", "kuaishou", "tokyo",
+        "beijing", "alibabai", "bytedance", "korea",
+    ],
+}
+
+
+@dataclass(frozen=True, slots=True)
+class TopicFilter:
+    key: str
+    label: str
+    terms: tuple[str, ...]
+
+
+TOPIC_FILTERS = [
+    TopicFilter("all", "All Topics", ()),
+    TopicFilter("frontier_models", "Frontier Models", ("llm", "foundation model", "gpt", "claude", "gemini", "llama", "frontier")),
+    TopicFilter("reasoning", "Reasoning & CoT", ("reasoning", "o1", "o3", "chain of thought", "cot", "추론")),
+    TopicFilter("agents_coding", "Agents & Coding", ("agent", "agents", "coding", "cursor", "devin", "copilot", "swe-bench", "에이전트")),
+    TopicFilter("hardware_infra", "Chips & Infra", ("gpu", "blackwell", "b200", "h100", "hbm", "cuda", "datacenter", "npu", "반도체")),
+    TopicFilter("open_source", "Open Source", ("open source", "open weights", "hugging face", "vllm", "ollama", "오픈소스")),
+    TopicFilter("multimodal", "Multimodal", ("multimodal", "vision", "video gen", "sora", "runway", "voice ai", "멀티모달")),
+    TopicFilter("regulation_policy", "Policy & Safety", ("eu ai act", "safety", "alignment", "regulation", "copyright", "규제", "안전")),
+]
+
+
+@dataclass(frozen=True, slots=True)
+class SourceTypeFilter:
+    key: str
+    label_en: str
+    label_ko: str
+
+
+SOURCE_TYPE_FILTERS = [
+    SourceTypeFilter("all", "All Sources", "전체 출처"),
+    SourceTypeFilter("official", "Official Labs", "공식 뉴스룸"),
+    SourceTypeFilter("research", "Research / Academic", "연구/학술"),
+    SourceTypeFilter("media", "Global Media", "글로벌 미디어"),
+    SourceTypeFilter("korean_media", "Korean Media", "국내 미디어"),
+    SourceTypeFilter("regulator", "Regulators", "규제 기구"),
+]
+
+INTELLIGENCE_SECTION_DEFINITIONS = [
+    {
+        "key": "top_stories",
+        "label_en": "Top Stories",
+        "label_ko": "주요 AI 뉴스",
+        "subtitle_en": "High-impact artificial intelligence breakthroughs and strategic moves",
+        "subtitle_ko": "가장 큰 파급력을 가진 핵심 AI 발표 및 전략 동향",
+        "categories": {"big"},
+    },
+    {
+        "key": "frontier_models",
+        "label_en": "Frontier Models & LLMs",
+        "label_ko": "프론티어 모델 & LLM",
+        "subtitle_en": "Next-gen foundation models, reasoning, and major lab developments",
+        "subtitle_ko": "차세대 파운데이션 모델, 추론 아키텍처 및 선도 랩 동향",
+        "categories": {"frontier_models"},
+    },
+    {
+        "key": "agents_coding",
+        "label_en": "AI Agents & Coding Tools",
+        "label_ko": "AI 에이전트 & 코딩 도구",
+        "subtitle_en": "Autonomous software engineering, SWE benchmarks, and agentic workflows",
+        "subtitle_ko": "자율 소프트웨어 개발, SWE-bench 및 워크플로 자동화",
+        "categories": {"agents_coding"},
+    },
+    {
+        "key": "hardware_infra",
+        "label_en": "AI Chips & Infrastructure",
+        "label_ko": "AI 반도체 & 인프라",
+        "subtitle_en": "Accelerators, HBM, compute clusters, datacenters and power grids",
+        "subtitle_ko": "차세대 가속기, HBM 메모리, 데이터센터 및 전력망 인프라",
+        "categories": {"hardware_infra"},
+    },
+    {
+        "key": "open_source",
+        "label_en": "Open Source & Weights",
+        "label_ko": "오픈소스 AI & 가중치",
+        "subtitle_en": "Open weight releases, fine-tuning, inference engines, and tooling",
+        "subtitle_ko": "오픈 모델 공개, 파인튜닝 기법 및 고속 추론 런타임",
+        "categories": {"open_source"},
+    },
+    {
+        "key": "research_breakthroughs",
+        "label_en": "Research & Breakthroughs",
+        "label_ko": "AI 연구 & 브레이크스루",
+        "subtitle_en": "arXiv preprints, novel architectures, and academic research",
+        "subtitle_ko": "arXiv 주요 논문, 신규 아키텍처 및 학술 연구 성과",
+        "categories": {"research_breakthroughs"},
+    },
+    {
+        "key": "multimodal_media",
+        "label_en": "Multimodal & Generative Media",
+        "label_ko": "멀티모달 & 생성 미디어",
+        "subtitle_en": "Video generation, 3D, voice synthesis, and creative GenAI",
+        "subtitle_ko": "영상 생성, 음성 합성 및 차세대 생성형 크리에이티브 도구",
+        "categories": {"multimodal_media"},
+    },
+    {
+        "key": "enterprise_app",
+        "label_en": "Enterprise & Applications",
+        "label_ko": "엔터프라이즈 & 산업 응용",
+        "subtitle_en": "Industry deployments, business automation, and healthcare/robotics",
+        "subtitle_ko": "기업용 업무 자동화, 버티컬 AI 및 피지컬 로보틱스 응용",
+        "categories": {"enterprise_app"},
+    },
+    {
+        "key": "regulation_policy",
+        "label_en": "Policy, Safety & Governance",
+        "label_ko": "정책, 규제 & AI 안전",
+        "subtitle_en": "EU AI Act compliance, safety standards, copyright, and antitrust",
+        "subtitle_ko": "글로벌 규제 컴플라이언스, 안전 프레임워크, 저작권 및 정책",
+        "categories": {"regulation_policy"},
+    },
+    {
+        "key": "industry_vc",
+        "label_en": "Industry, VC & Business",
+        "label_ko": "투자, 시장 & 스타트업",
+        "subtitle_en": "Venture funding, valuations, M&A, and commercial dynamics",
+        "subtitle_ko": "대규모 투자 유치, 기업가치 평가, M&A 및 빅테크 제휴",
+        "categories": {"industry_vc"},
+    },
+]
+
+
+@dataclass(frozen=True, slots=True)
+class ArticleView:
+    article: Article
+    priority: Any
+    source_url: str
+    published_time: str
+    regions: list[RegionSignal]
+    region_keys: list[str]
+    all_region_keys: list[str]
+    topic_keys: list[str]
+    source_type: str
+    title_ko: str
+    title_en: str
+    factual_summary_ko: str
+    factual_summary_en: str
+    why_it_matters_ko: str
+    why_it_matters_en: str
+    primary_category_ko: str
+    primary_category_en: str
+    coverage: Any
+    user_tags: list[str]
+    publisher_display: str
+
+
+def regions_for_article(article: Article) -> list[RegionSignal]:
+    text = f"{article.title} {article.excerpt} {' '.join(article.tags)}".lower()
+    matched = []
+    for key in ["us", "korea", "europe", "asia"]:
+        if any(term in text for term in REGION_TERMS[key]):
+            matched.append(key)
+    if not matched:
+        matched = ["global"]
+    return [next(r for r in REGION_FILTERS if r.key == key) for key in matched]
+
+
+def all_region_keys_for_article(article: Article) -> list[str]:
+    regs = regions_for_article(article)
+    keys = ["all"] + [r.key for r in regs]
+    return list(dict.fromkeys(keys))
+
+
+def region_counts(articles: list[Article]) -> dict[str, int]:
+    counts = {r.key: 0 for r in REGION_FILTERS}
+    counts["all"] = len(articles)
+    for a in articles:
+        for r in regions_for_article(a):
+            counts[r.key] = counts.get(r.key, 0) + 1
+    return counts
+
+
+def topic_keys_for_article(article: Article) -> list[str]:
+    text = f"{article.title} {article.excerpt} {' '.join(article.topics)} {' '.join(article.tags)}".lower()
+    keys = ["all"]
+    for tf in TOPIC_FILTERS:
+        if tf.key == "all":
+            continue
+        if any(term in text for term in tf.terms):
+            keys.append(tf.key)
+    return keys
+
+
+def topic_counts(articles: list[Article]) -> dict[str, int]:
+    counts = {t.key: 0 for t in TOPIC_FILTERS}
+    counts["all"] = len(articles)
+    for a in articles:
+        for t_key in topic_keys_for_article(a):
+            if t_key != "all":
+                counts[t_key] = counts.get(t_key, 0) + 1
+    return counts
+
+
+def source_type_counts(articles: list[Article]) -> dict[str, int]:
+    counts = {s.key: 0 for s in SOURCE_TYPE_FILTERS}
+    counts["all"] = len(articles)
+    for a in articles:
+        st = canonical_source_type(a)
+        if st in counts:
+            counts[st] += 1
+    return counts
+
+
+def source_type_keys_for_article(article: Article) -> list[str]:
+    return ["all", canonical_source_type(article)]
+
+
+def canonical_source_type(article: Article) -> str:
+    st = (article.source_type or "media").lower()
+    if st in {"regulator"}:
+        return "regulator"
+    if st in {"research"}:
+        return "research"
+    if st in {"official"}:
+        return "official"
+    if st in {"korean_media"}:
+        return "korean_media"
+    return "media"
+
+
+def display_title_ko(article: Article) -> str:
+    if article.title_ko:
+        return article.title_ko
+    return article.title
+
+
+def display_title_en(article: Article) -> str:
+    if article.title_en:
+        return article.title_en
+    return article.title
+
+
+def display_factual_summary_ko(article: Article) -> str:
+    return article.summary_ko or article.excerpt or article.title
+
+
+def display_factual_summary_en(article: Article) -> str:
+    return article.summary_en or article.excerpt or article.title
+
+
+def display_summary_ko(article: Article) -> str:
+    return display_factual_summary_ko(article)
+
+
+def display_summary_en(article: Article) -> str:
+    return display_factual_summary_en(article)
+
+
+def display_why_it_matters_ko(article: Article) -> str:
+    return article.why_it_matters_ko or "인공지능 산업 생태계에 유의미한 전략적 파급효과가 예상됩니다."
+
+
+def display_why_it_matters_en(article: Article) -> str:
+    return article.why_it_matters_en or "Has notable strategic and technical implications for the AI ecosystem."
+
+
+def display_primary_category(article: Article, lang: str = "ko") -> str:
+    cat = article.primary_category or article.category or "frontier_models"
+    if lang == "en":
+        return CATEGORY_LABELS_EN.get(cat, "AI Technology")
+    return CATEGORY_LABELS_KO.get(cat, "인공지능 기술")
+
+
+def display_published_time(article: Article) -> str:
+    if not article.published_at:
+        return ""
+    return article.published_at.strftime("%Y-%m-%d %H:%M")
+
+
+def display_url(article: Article) -> str:
+    return article.canonical_url or article.url
+
+
+def display_key_points(article: Article) -> list[str]:
+    return article.key_points or []
+
+
+def visible_tags(article: Article) -> list[str]:
+    return article.tags
+
+
+def display_event_coverage(article: Article) -> dict[str, Any]:
+    count = article.event_source_count or 1
+    return {
+        "source_count": count,
+        "independent_source_count": article.event_independent_source_count or 1,
+        "has_official_source": article.event_has_official_source,
+        "has_regulatory_source": article.event_has_regulatory_source,
+        "official_source_url": article.event_official_source_url,
+        "official_source_name": article.event_official_source_name,
+        "related_sources": article.event_related_sources or [article.source],
+        "label_ko": f"{count}개 매체 보도 중",
+        "label_en": f"{count} sources covering this event",
+    }
+
+
+def prepare_article_view(article: Article) -> ArticleView:
+    return ArticleView(
+        article=article,
+        priority=assess_priority(article),
+        source_url=display_url(article),
+        published_time=display_published_time(article),
+        regions=regions_for_article(article),
+        region_keys=[r.key for r in regions_for_article(article)],
+        all_region_keys=all_region_keys_for_article(article),
+        topic_keys=topic_keys_for_article(article),
+        source_type=canonical_source_type(article),
+        title_ko=display_title_ko(article),
+        title_en=display_title_en(article),
+        factual_summary_ko=display_factual_summary_ko(article),
+        factual_summary_en=display_factual_summary_en(article),
+        why_it_matters_ko=display_why_it_matters_ko(article),
+        why_it_matters_en=display_why_it_matters_en(article),
+        primary_category_ko=display_primary_category(article, "ko"),
+        primary_category_en=display_primary_category(article, "en"),
+        coverage=display_event_coverage(article),
+        user_tags=visible_tags(article),
+        publisher_display=article.publisher or article.source or "Unknown Source",
+    )
+
+
+def build_intelligence_sections(issue: NewsletterIssue, lang: str = "ko") -> list[dict[str, Any]]:
+    is_en = lang == "en"
+    articles = issue.articles
+    sections = []
+    assigned_ids = set()
+
+    for defn in INTELLIGENCE_SECTION_DEFINITIONS:
+        sec_articles = [
+            a for a in articles
+            if (a.primary_category in defn["categories"] or a.category in defn["categories"])
+            and a.article_id not in assigned_ids
+        ]
+        sec_articles.sort(key=lambda a: a.priority_score, reverse=True)
+        for a in sec_articles:
+            assigned_ids.add(a.article_id)
+
+        sections.append({
+            "key": defn["key"],
+            "label_en": defn["label_en"],
+            "label_ko": defn["label_ko"],
+            "label": defn["label_en"] if is_en else defn["label_ko"],
+            "subtitle_en": defn["subtitle_en"],
+            "subtitle_ko": defn["subtitle_ko"],
+            "subtitle": defn["subtitle_en"] if is_en else defn["subtitle_ko"],
+            "articles": sec_articles,
+            "article_views": [prepare_article_view(a) for a in sec_articles],
+        })
+
+    leftovers = [a for a in articles if a.article_id not in assigned_ids]
+    if leftovers and sections:
+        sections[0]["articles"].extend(leftovers)
+        sections[0]["articles"].sort(key=lambda a: a.priority_score, reverse=True)
+        sections[0]["article_views"] = [prepare_article_view(a) for a in sections[0]["articles"]]
+
+    return sections
+
+
+def compute_issue_metrics(articles_or_views: list[Any]) -> dict[str, int]:
+    articles: list[Article] = []
+    for item in articles_or_views:
+        if isinstance(item, Article):
+            articles.append(item)
+        elif isinstance(item, ArticleView):
+            articles.append(item.article)
+        elif isinstance(item, dict) and "articles" in item:
+            articles.extend(item["articles"])
+
+    critical = 0
+    high = 0
+    for a in articles:
+        p = assess_priority(a)
+        if p.level == "critical":
+            critical += 1
+        elif p.level == "high":
+            high += 1
+
+    return {
+        "total": len(articles),
+        "critical": critical,
+        "high": high,
+    }
+
