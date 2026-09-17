@@ -39,61 +39,93 @@ STOP_WORDS = {
 
 AI_MODEL_PATTERNS = [
     re.compile(r"\b(gpt-?4o?|gpt-?5|gpt-?3\.5|o1-preview|o1-mini|o1|o3)\b", re.I),
-    re.compile(r"\b(claude\s*3(?:\.5)?(?:\s*(?:sonnet|opus|haiku))?)\b", re.I),
-    re.compile(r"\b(gemini\s*(?:1\.5|2\.0)?(?:\s*(?:flash|pro|ultra))?)\b", re.I),
-    re.compile(r"\b(llama\s*(?:2|3|3\.1|3\.2|3\.3)?)\b", re.I),
-    re.compile(r"\b(blackwell|b200|b100|h100|h200|gb200)\b", re.I),
+    re.compile(r"\b(claude\s*3(?:\.5)?(?:\s*(?:sonnet|opus|haiku))?|클로드\s*3(?:\.5)?)\b", re.I),
+    re.compile(r"\b(gemini\s*(?:1\.5|2\.0)?(?:\s*(?:flash|pro|ultra))?|제미나이(?:\s*(?:1\.5|2\.0))?)\b", re.I),
+    re.compile(r"\b(llama\s*(?:2|3|3\.1|3\.2|3\.3)?|라마\s*(?:2|3|3\.1|3\.2|3\.3)?)\b", re.I),
+    re.compile(r"\b(blackwell|b200|b100|h100|h200|gb200|블랙웰)\b", re.I),
     re.compile(r"\b(mi300[xa]?|mi325x|mi350)\b", re.I),
     re.compile(r"\b(sora|gen-3|kling|flux|midjourney\s*v[0-9]+)\b", re.I),
+    re.compile(r"\b(deepseek\s*(?:v2|v3|r1)?|qwen\s*(?:2|2\.5)?|gemma\s*(?:2)?|alphafold\s*(?:2|3)?|알파폴드\s*(?:2|3)?)\b", re.I),
 ]
 
 AI_EVENT_THEMES = {
-    "model_release": ["release", "launches", "unveils", "debuts", "introduces", "open weights", "출시", "공개", "발표"],
-    "benchmarking": ["swe-bench", "mmlu", "benchmark", "outperforms", "beats", "sota", "벤치마크", "성능"],
-    "investment": ["funding", "valuation", "billion", "raises", "series", "ipo", "투자", "유치"],
-    "legal_policy": ["lawsuit", "sues", "antitrust", "copyright", "ban", "compliance", "eu ai act", "소송", "규제"],
-    "security": ["jailbreak", "vulnerability", "prompt injection", "exploit", "red team", "보안", "취약점"],
-    "datacenter_hardware": ["datacenter", "tape-out", "foundry", "hbm", "hbm3e", "gigawatt", "반도체", "양산"],
+    "model_release": ["release", "launches", "unveils", "debuts", "introduces", "open weights", "rollout", "출시", "공개", "발표", "선보여", "오픈소스"],
+    "benchmarking": ["swe-bench", "mmlu", "benchmark", "outperforms", "beats", "sota", "evaluation", "evals", "벤치마크", "성능", "평가"],
+    "investment": ["funding", "valuation", "billion", "raises", "series", "ipo", "invest", "investment", "투자", "유치", "펀딩"],
+    "partnership": ["partnership", "partners", "collaboration", "collaborates", "alliance", "joint", "agreement", "pact", "initiative", "team up", "teams up", "pacts", "제휴", "협력", "파트너십", "동맹", "협약", "손잡고", "협업", "이니셔티브"],
+    "legal_policy": ["lawsuit", "sues", "sued", "antitrust", "copyright", "ban", "compliance", "eu ai act", "regulation", "regulatory", "court", "probe", "investigation", "fine", "fined", "소송", "고소", "제소", "규제", "위반", "법안", "조사", "과징금"],
+    "security_safety": ["jailbreak", "vulnerability", "prompt injection", "exploit", "red team", "safety", "aisi", "alignment", "guardrail", "risk", "risks", "보안", "취약점", "안전", "안전성", "위험"],
+    "datacenter_hardware": ["datacenter", "tape-out", "foundry", "hbm", "hbm3e", "gigawatt", "반도체", "양산", "데이터센터"],
+    "corporate_expansion": ["office", "headquarters", "expansion", "expands", "expand", "hire", "hires", "executive", "resign", "resignation", "appointment", "사옥", "지사", "영입", "사임", "확장", "런던"],
+}
+
+AI_ACTION_ANCHORS = {
+    "release": ["release", "releases", "released", "launch", "launches", "launched", "unveil", "unveils", "unveiled", "debut", "debuts", "introduce", "introduces", "introduced", "rollout", "출시", "공개", "발표", "선보여"],
+    "partnership": ["partner", "partners", "partnership", "collaborate", "collaborates", "collaboration", "alliance", "joint", "agreement", "pact", "initiative", "team up", "teams up", "제휴", "협력", "파트너십", "동맹", "협약", "손잡고", "협업", "이니셔티브"],
+    "legal": ["lawsuit", "sue", "sues", "sued", "antitrust", "copyright", "ban", "compliance", "regulation", "regulatory", "court", "probe", "investigation", "fine", "fined", "소송", "고소", "제소", "규제", "위반", "법안", "조사", "과징금"],
+    "security": ["safety", "aisi", "alignment", "jailbreak", "vulnerability", "exploit", "red team", "guardrail", "safeguard", "안전", "안전성", "보안", "취약점", "위험"],
+    "investment": ["funding", "valuation", "billion", "raise", "raises", "raised", "series", "ipo", "invest", "investment", "투자", "유치", "펀딩"],
+    "corporate": ["office", "headquarters", "expansion", "expands", "expand", "hire", "hires", "hired", "executive", "resign", "resigns", "resignation", "appointment", "사옥", "지사", "영입", "사임", "임명", "확장"],
 }
 
 
 @dataclass(slots=True)
 class ArticleClusteringFeatures:
     text: str
+    title_text: str
     models: set[str]
     entities: set[str]
     tokens: set[str]
     themes: set[str]
+    actions: set[str]
 
 
 def extract_clustering_features(article: Article) -> ArticleClusteringFeatures:
-    text = f"{article.title} {article.excerpt} {' '.join(article.tags)}".lower()
+    title_parts = [article.title or "", article.title_ko or "", article.title_en or ""]
+    full_title_text = " ".join(p for p in title_parts if p).strip()
+
+    body_parts = [
+        article.excerpt or "",
+        article.summary_ko or "",
+        article.summary_en or "",
+        " ".join(article.tags or []),
+        " ".join(article.key_points or []),
+    ]
+    full_text = f"{full_title_text} {' '.join(p for p in body_parts if p)}".lower()
 
     # Model identifiers
     models = set()
     for pat in AI_MODEL_PATTERNS:
-        for match in pat.finditer(text):
+        for match in pat.finditer(full_text):
             models.add(match.group(0).lower().replace(" ", "").replace("-", ""))
 
     # Entities
-    found_entities = set(find_entities_in_text(text))
+    found_entities = set(find_entities_in_text(full_text))
 
-    # Clean tokens
-    cleaned = re.sub(r"[^a-z0-9가-힣\s]", " ", article.title.lower())
+    # Clean tokens from title text (supports English and Korean)
+    cleaned = re.sub(r"[^a-z0-9가-힣\s]", " ", full_title_text.lower())
     tokens = {w for w in cleaned.split() if len(w) >= 2 and w not in STOP_WORDS}
 
     # Themes
     themes = set()
     for theme_name, keywords in AI_EVENT_THEMES.items():
-        if any(kw in text for kw in keywords):
+        if any(kw in full_text for kw in keywords):
             themes.add(theme_name)
 
+    # Actions
+    actions = set()
+    for action_name, keywords in AI_ACTION_ANCHORS.items():
+        if any(kw in full_text for kw in keywords):
+            actions.add(action_name)
+
     return ArticleClusteringFeatures(
-        text=text,
+        text=full_text,
+        title_text=full_title_text.lower(),
         models=models,
         entities=found_entities,
         tokens=tokens,
         themes=themes,
+        actions=actions,
     )
 
 
@@ -122,17 +154,6 @@ def calculate_event_similarity(
     if f2 is None:
         f2 = extract_clustering_features(a2)
 
-    # Hard Negative Guards
-    # 1. Model version collision (e.g. GPT-4o vs Claude 3.5, or Llama 2 vs Llama 3)
-    if f1.models and f2.models and f1.models.isdisjoint(f2.models):
-        return 0.0
-
-    # 2. Competitor entity collision (e.g. purely Anthropic vs purely OpenAI without common theme or partnership)
-    if f1.entities and f2.entities and f1.entities.isdisjoint(f2.entities):
-        # Unless both talk about an alliance or common regulation
-        if not (("legal_policy" in f1.themes and "legal_policy" in f2.themes) or "partnership" in f1.text):
-            return 0.0
-
     # Token overlap (Jaccard similarity)
     if not f1.tokens or not f2.tokens:
         return 0.0
@@ -141,16 +162,65 @@ def calculate_event_similarity(
     union = len(f1.tokens | f2.tokens)
     jaccard = intersect / union if union > 0 else 0.0
 
-    # Bonus for common entities and themes
-    score = jaccard
-    if f1.entities and f2.entities and not f1.entities.isdisjoint(f2.entities):
-        score += 0.35
-    if f1.themes and f2.themes and not f1.themes.isdisjoint(f2.themes):
-        score += 0.20
-    if f1.models and f2.models and not f1.models.isdisjoint(f2.models):
-        score += 0.30
+    # Layered Hard-Negative Guards
+    # 1. Competitor entity collision (pure competitor stories without alliance or shared framework)
+    if f1.entities and f2.entities and f1.entities.isdisjoint(f2.entities):
+        shared_joint_context = (
+            bool((f1.themes & f2.themes) & {"partnership", "legal_policy", "security_safety"})
+            or bool((f1.actions & f2.actions) & {"partnership", "legal", "security"})
+        )
+        if not (shared_joint_context and jaccard >= 0.15):
+            return 0.0
 
-    return min(1.0, score)
+    # 2. Model version collision
+    # Strictly block disjoint models UNLESS there is strong multi-entity alliance / joint safety / benchmark context
+    if f1.models and f2.models and f1.models.isdisjoint(f2.models):
+        has_multi_entity_joint_anchor = len(f1.entities & f2.entities) >= 2
+        has_joint_event_anchor = bool(
+            (f1.themes & f2.themes) & {"partnership", "security_safety", "legal_policy", "benchmarking"}
+            or (f1.actions & f2.actions) & {"partnership", "security", "legal"}
+        )
+        if not (has_multi_entity_joint_anchor or has_joint_event_anchor):
+            return 0.0
+
+    # 3. Action clash penalties (e.g. corporate office expansion vs model release, lawsuit vs model release)
+    clash_penalty = 0.0
+    if ("corporate_expansion" in f1.themes) ^ ("corporate_expansion" in f2.themes):
+        if not (f1.themes & f2.themes):
+            clash_penalty += 0.35
+    if (("legal" in f1.actions) ^ ("legal" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
+        if not ((f1.themes & f2.themes) & {"legal_policy", "partnership"}):
+            clash_penalty += 0.35
+
+    # Layered Score Aggregation
+    score = jaccard
+
+    # Entities bonus
+    shared_entities = f1.entities & f2.entities
+    if len(shared_entities) >= 2:
+        score += 0.30
+    elif len(shared_entities) == 1:
+        if (f1.actions & f2.actions) or (f1.themes & f2.themes) or (f1.models & f2.models):
+            score += 0.25
+        else:
+            # Merely mentioning the same company with completely unrelated actions/themes
+            score += 0.05
+
+    # Models bonus
+    if f1.models and f2.models and not f1.models.isdisjoint(f2.models):
+        score += 0.25
+
+    # Themes bonus
+    if f1.themes and f2.themes and not f1.themes.isdisjoint(f2.themes):
+        score += 0.15
+
+    # Actions bonus
+    if f1.actions and f2.actions and not f1.actions.isdisjoint(f2.actions):
+        score += 0.15
+
+    score -= clash_penalty
+
+    return min(1.0, max(0.0, score))
 
 
 # ── Verification status constants ─────────────────────────────────────────────
