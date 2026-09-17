@@ -612,14 +612,19 @@ def cluster_articles(
         # Compute evidence confidence score and explanation
         ev_confidence = compute_event_confidence(ev_evidence, cluster_items)
 
+        # source_count: Number of distinct normalized publishers contributing coverage
+        # independent_source_count: Number of distinct normalized publishers with evidence_level == "independent"
+        src_count = len(ev_evidence.evidence_sources) if ev_evidence.evidence_sources else len(publishers)
+        ind_src_count = len(ev_evidence.independent_sources)
+
         event = Event(
             event_id=ev_id,
             title=event_title,
             category=primary.category,
             importance=max(a.priority_score for a in cluster_items),
             primary_article_id=primary.article_id,
-            source_count=len(cluster_items),
-            independent_source_count=len(publishers),
+            source_count=src_count,
+            independent_source_count=ind_src_count,
             has_official_source=has_official,
             has_regulatory_source=has_reg,
             has_major_media_source=has_media,
@@ -657,8 +662,8 @@ def cluster_articles(
             a.event_id = ev_id
             a.event_title = event_title
             a.related_article_ids = rel_ids
-            a.event_source_count = len(cluster_items)
-            a.event_independent_source_count = len(publishers)
+            a.event_source_count = src_count
+            a.event_independent_source_count = ind_src_count
             a.event_has_official_source = has_official
             a.event_has_regulatory_source = has_reg
             a.event_has_major_media_source = has_media

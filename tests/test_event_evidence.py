@@ -734,3 +734,187 @@ def test_confidence_no_publisher_or_empty():
     assert conf.confidence_score <= 20.0
     assert "insufficient" in conf.explanation_en.lower()
 
+
+# ── Tests for source_count & independent_source_count consistency ──────────────
+
+def test_source_metrics_primary_only():
+    """1. Primary only: 1 primary publisher, 0 independent -> source_count=1, independent_source_count=0."""
+    a1 = make_article(
+        "OpenAI launches GPT-5",
+        "https://openai.com/blog/gpt-5",
+        publisher="OpenAI",
+        evidence_level="primary",
+        source_type="official",
+        is_primary_source=True,
+    )
+    events, _, _ = cluster_articles([a1])
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.source_count == 1
+    assert ev.independent_source_count == 0
+    assert ev.evidence_sources == ["openai"]
+    assert ev.primary_sources == ["openai"]
+    assert ev.independent_sources == []
+    assert ev.verification_status == "primary_only"
+
+
+def test_source_metrics_primary_plus_independent():
+    """2. Primary + independent: OpenAI + Reuters -> source_count=2, independent_source_count=1."""
+    a1 = make_article(
+        "OpenAI launches GPT-5",
+        "https://openai.com/blog/gpt-5",
+        publisher="OpenAI",
+        evidence_level="primary",
+        source_type="official",
+        is_primary_source=True,
+    )
+    a2 = make_article(
+        "OpenAI unveils GPT-5 with frontier capabilities",
+        "https://reuters.com/tech/openai-gpt5",
+        publisher="Reuters",
+        evidence_level="independent",
+        source_type="media",
+        is_independent_source=True,
+    )
+    events, _, _ = cluster_articles([a1, a2])
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.source_count == 2
+    assert ev.independent_source_count == 1
+    assert set(ev.evidence_sources) == {"openai", "reuters"}
+    assert ev.primary_sources == ["openai"]
+    assert ev.independent_sources == ["reuters"]
+    assert ev.verification_status == "independently_reported"
+
+
+def test_source_metrics_two_independent_publishers():
+    """3. Two independent publishers: Reuters + Bloomberg -> source_count=2, independent_source_count=2."""
+    a1 = make_article(
+        "OpenAI unveils GPT-5 with frontier capabilities",
+        "https://reuters.com/tech/openai-gpt5",
+        publisher="Reuters",
+        evidence_level="independent",
+        source_type="media",
+        is_independent_source=True,
+    )
+    a2 = make_article(
+        "OpenAI launches GPT-5 flagship model",
+        "https://bloomberg.com/news/openai-gpt5",
+        publisher="Bloomberg",
+        evidence_level="independent",
+        source_type="media",
+        is_independent_source=True,
+    )
+    events, _, _ = cluster_articles([a1, a2])
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.source_count == 2
+    assert ev.independent_source_count == 2
+    assert set(ev.evidence_sources) == {"reuters", "bloomberg"}
+    assert ev.primary_sources == []
+    assert set(ev.independent_sources) == {"reuters", "bloomberg"}
+    assert ev.verification_status == "multi_source"
+
+
+def test_source_metrics_same_independent_multiple_articles():
+    """4. Same independent publisher with multiple articles: OpenAI + Reuters + Bloomberg + Reuters follow-up -> source_count=3, independent_source_count=2."""
+    a1 = make_article(
+        "OpenAI launches GPT-5",
+        "https://openai.com/blog/gpt-5",
+        publisher="OpenAI",
+        evidence_level="primary",
+        source_type="official",
+        is_primary_source=True,
+    )
+    a2 = make_article(
+        "OpenAI unveils GPT-5 with frontier capabilities",
+        "https://reuters.com/tech/openai-gpt5",
+        publisher="Reuters",
+        evidence_level="independent",
+        source_type="media",
+        is_independent_source=True,
+    )
+    a3 = make_article(
+        "OpenAI launches GPT-5 flagship model",
+        "https://bloomberg.com/news/openai-gpt5",
+        publisher="Bloomberg",
+        evidence_level="independent",
+        source_type="media",
+        is_independent_source=True,
+    )
+    a4 = make_article(
+        "OpenAI GPT-5 launch sparks regulatory scrutiny",
+        "https://reuters.com/tech/openai-gpt5-eu",
+        publisher="Reuters Technology",
+        evidence_level="independent",
+        source_type="media",
+        is_independent_source=True,
+    )
+    events, _, _ = cluster_articles([a1, a2, a3, a4])
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.source_count == 3
+    assert ev.independent_source_count == 2
+    assert set(ev.evidence_sources) == {"openai", "reuters", "bloomberg"}
+    assert ev.primary_sources == ["openai"]
+    assert set(ev.independent_sources) == {"reuters", "bloomberg"}
+    assert ev.verification_status == "multi_source"
+
+
+def test_source_metrics_primary_plus_independent_plus_industry_media():
+    """5. Primary + independent + industry media: OpenAI + Reuters + TechCrunch -> source_count=3, independent_source_count=1."""
+    a1 = make_article(
+        "OpenAI launches GPT-5",
+        "https://openai.com/blog/gpt-5",
+        publisher="OpenAI",
+        evidence_level="primary",
+        source_type="official",
+        is_primary_source=True,
+    )
+    a2 = make_article(
+        "OpenAI unveils GPT-5 with frontier capabilities",
+        "https://reuters.com/tech/openai-gpt5",
+        publisher="Reuters",
+        evidence_level="independent",
+        source_type="media",
+        is_independent_source=True,
+    )
+    a3 = make_article(
+        "Everything we know about OpenAI GPT-5",
+        "https://techcrunch.com/openai-gpt5",
+        publisher="TechCrunch",
+        evidence_level="industry_media",
+        source_type="media",
+    )
+    events, _, _ = cluster_articles([a1, a2, a3])
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.source_count == 3
+    assert ev.independent_source_count == 1
+    assert set(ev.evidence_sources) == {"openai", "reuters", "techcrunch"}
+    assert ev.primary_sources == ["openai"]
+    assert ev.independent_sources == ["reuters"]
+    assert ev.verification_status == "independently_reported"
+
+
+def test_source_metrics_discovery_only():
+    """6. Discovery-only: Google News aggregators -> source_count=1, independent_source_count=0."""
+    a1 = make_article(
+        "OpenAI GPT-5 Search Aggregate",
+        "https://news.google.com/articles/openai-gpt5",
+        publisher="Google News",
+        evidence_level="discovery",
+        source_type="aggregator",
+        is_discovery_source=True,
+    )
+    events, _, _ = cluster_articles([a1])
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.source_count == 1
+    assert ev.independent_source_count == 0
+    assert ev.evidence_sources == ["google"]
+    assert ev.primary_sources == []
+    assert ev.independent_sources == []
+    assert ev.verification_status == "discovery_only"
+
+

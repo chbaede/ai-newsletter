@@ -347,10 +347,8 @@ def test_three_source_event_evidence_diversity():
     assert len(events) == 1
     ev = events[0]
     assert set(ev.evidence_sources) == {"openai", "reuters", "techcrunch"}
-    assert ev.primary_sources == ["openai"]
-    assert ev.independent_sources == ["reuters"]
     assert ev.source_count == 3
-    assert ev.independent_source_count == 3
+    assert ev.independent_source_count == 1
     assert ev.verification_status == "independently_reported"
 
 
