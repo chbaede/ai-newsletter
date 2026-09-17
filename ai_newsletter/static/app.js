@@ -105,6 +105,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Filtering logic
+  const sectionButtons = Array.from(document.querySelectorAll("[data-section-filter]"));
+  let activeSection = "all";
   let activeRegion = "all";
   let activeTopic = "all";
   let activeSourceType = "all";
@@ -113,19 +115,24 @@ document.addEventListener("DOMContentLoaded", () => {
     let totalVisible = 0;
 
     issueSections.forEach((section) => {
+      const secKey = section.dataset.sectionKey || "";
+      const sectionMatchOverall = activeSection === "all" || activeSection === secKey;
+
       const cards = Array.from(section.querySelectorAll(".article-card"));
       let visibleInSection = 0;
 
       cards.forEach((card) => {
+        const cardSec = card.dataset.section || secKey;
         const regions = (card.dataset.regions || "").split(" ");
         const topics = (card.dataset.topics || "").split(" ");
         const sourceTypes = (card.dataset.sourceType || "").split(" ");
 
+        const sectionMatch = activeSection === "all" || cardSec === activeSection;
         const regionMatch = activeRegion === "all" || regions.includes(activeRegion);
         const topicMatch = activeTopic === "all" || topics.includes(activeTopic);
         const sourceMatch = activeSourceType === "all" || sourceTypes.includes(activeSourceType);
 
-        if (regionMatch && topicMatch && sourceMatch) {
+        if (sectionMatch && regionMatch && topicMatch && sourceMatch) {
           card.style.display = "";
           visibleInSection += 1;
         } else {
@@ -133,7 +140,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      if (visibleInSection > 0) {
+      if (sectionMatchOverall && visibleInSection > 0) {
         section.style.display = "";
         totalVisible += visibleInSection;
       } else {
@@ -145,6 +152,15 @@ document.addEventListener("DOMContentLoaded", () => {
       filterEmpty.style.display = totalVisible === 0 ? "block" : "none";
     }
   };
+
+  sectionButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      sectionButtons.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeSection = btn.dataset.sectionFilter;
+      applyFilters();
+    });
+  });
 
   regionButtons.forEach((btn) => {
     btn.addEventListener("click", () => {

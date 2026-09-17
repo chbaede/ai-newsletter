@@ -938,9 +938,10 @@ html.dark-mode .why-it-matters strong {
 /* ── Source Transparency & Neutral Evidence Badges ───────────────────────── */
 .source-transparency-row {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  padding: 8px 14px;
   background: var(--transparency-bg);
   border-radius: 8px;
   border: 1px solid var(--transparency-border);
@@ -949,10 +950,9 @@ html.dark-mode .why-it-matters strong {
 }
 
 .transparency-item {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .transparency-label {

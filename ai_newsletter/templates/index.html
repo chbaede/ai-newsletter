@@ -144,6 +144,31 @@
       <div class="filter-controls">
         <div class="filter-group">
           <span class="filter-label">
+            <span class="lang-ko">분야별</span>
+            <span class="lang-en" style="display:none;">Section</span>
+          </span>
+          <div class="filter-pills">
+            <button type="button" class="filter-pill active" data-section-filter="all">
+              <span class="lang-ko">전체 분야</span>
+              <span class="lang-en" style="display:none;">All Sections</span>
+              {% if issue_metrics.total %}
+                <span class="pill-count">{{ issue_metrics.total }}</span>
+              {% endif %}
+            </button>
+            {% for sec in sections %}
+              {% if sec.articles %}
+                <button type="button" class="filter-pill" data-section-filter="{{ sec.key }}">
+                  <span class="lang-ko">{{ sec.label_ko }}</span>
+                  <span class="lang-en" style="display:none;">{{ sec.label_en }}</span>
+                  <span class="pill-count">{{ sec.articles|length }}</span>
+                </button>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">
             <span class="lang-ko">지역</span>
             <span class="lang-en" style="display:none;">Region</span>
           </span>
@@ -234,6 +259,7 @@
             <div class="card-grid">
               {% for view in sec.article_views %}
                 <article class="article-card"
+                         data-section="{{ sec.key }}"
                          data-regions="{{ view.all_region_keys|join(' ') }}"
                          data-topics="{{ view.topic_keys|join(' ') }}"
                          data-source-type="{{ view.source_type }}">
