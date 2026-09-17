@@ -201,3 +201,265 @@ def test_recent_articles_invalid_or_non_positive_days(test_store):
     assert test_store.recent_articles(days=-3, now_dt=now) == []
     assert test_store.recent_articles(days="invalid", now_dt=now) == []  # type: ignore
 
+
+# ── Tests for Event Evidence Persistence and Article Metadata Reconstruction ──
+
+
+def test_event_evidence_persistence_and_article_metadata_reconstruction(test_store):
+    """1-4. Save event + articles, reload from SQLite, verify event evidence & consistency."""
+    ev = Event(
+        event_id="ev_meta_test",
+        title="Anthropic Claude 3.5 Launch",
+        category="frontier_models",
+        importance=95.0,
+        source_count=3,
+        independent_source_count=2,
+        has_official_source=True,
+        has_regulatory_source=False,
+        has_major_media_source=True,
+        official_source_url="https://anthropic.com/news/claude-3-5",
+        official_source_name="Anthropic",
+        reference_source_name="Reuters",
+        related_sources=["Anthropic", "Reuters", "TechCrunch"],
+        evidence_sources=["Anthropic", "Reuters", "TechCrunch"],
+        primary_sources=["Anthropic"],
+        independent_sources=["Reuters", "TechCrunch"],
+        evidence_diversity=2,
+        verification_status="primary_and_independent",
+        confidence_score=94.0,
+        confidence_label="High",
+        confidence_explanation_ko="1차 출처 및 독립 언론 보도로 검증된 이벤트입니다.",
+        confidence_explanation_en="Verified by primary and independent reporting.",
+    )
+    art1 = Article(
+        title="Anthropic announces Claude 3.5 Sonnet",
+        url="https://anthropic.com/news/claude-3-5",
+        source="Anthropic",
+        category="frontier_models",
+        summary_ko="앤스로픽이 클로드 3.5 소넷을 출시했습니다.",
+        event_id="ev_meta_test",
+        evidence_level="primary",
+        is_primary_source=True,
+    )
+    art2 = Article(
+        title="Reuters: Anthropic debuts Claude 3.5 Sonnet",
+        url="https://reuters.com/technology/anthropic-claude-3-5",
+        source="Reuters",
+        category="frontier_models",
+        summary_ko="로이터가 클로드 3.5 출시 소식을 전했습니다.",
+        event_id="ev_meta_test",
+        evidence_level="independent",
+        is_independent_source=True,
+    )
+
+    issue = NewsletterIssue(
+        issue_date="2026-09-17",
+        articles=[art1, art2],
+        events=[ev],
+    )
+    test_store.save_issue(issue)
+
+    # Reload issue from SQLite
+    reloaded = test_store.get_issue("2026-09-17")
+    assert reloaded is not None
+    assert len(reloaded.events) == 1
+    assert len(reloaded.articles) == 2
+
+    # 3. Verify event evidence is still available on the reloaded Event
+    rev = reloaded.events[0]
+    assert rev.event_id == "ev_meta_test"
+    assert rev.source_count == 3
+    assert rev.independent_source_count == 2
+    assert rev.has_official_source is True
+    assert rev.official_source_name == "Anthropic"
+    assert rev.evidence_sources == ["Anthropic", "Reuters", "TechCrunch"]
+    assert rev.primary_sources == ["Anthropic"]
+    assert rev.independent_sources == ["Reuters", "TechCrunch"]
+    assert rev.evidence_diversity == 2
+    assert rev.verification_status == "primary_and_independent"
+    assert rev.confidence_score == 94.0
+    assert rev.confidence_label == "High"
+    assert rev.confidence_explanation_ko == "1차 출처 및 독립 언론 보도로 검증된 이벤트입니다."
+    assert rev.confidence_explanation_en == "Verified by primary and independent reporting."
+
+    # 4. Verify article values are consistent with the event
+    for a in reloaded.articles:
+        assert a.event_id == "ev_meta_test"
+        assert a.event_title == rev.title
+        assert a.event_source_count == rev.source_count
+        assert a.event_independent_source_count == rev.independent_source_count
+        assert a.event_has_official_source == rev.has_official_source
+        assert a.event_official_source_name == rev.official_source_name
+        assert a.event_official_source_url == rev.official_source_url
+        assert a.event_reference_source_name == rev.reference_source_name
+        assert a.event_related_sources == rev.related_sources
+        assert a.event_evidence_sources == rev.evidence_sources
+        assert a.event_primary_sources == rev.primary_sources
+        assert a.event_independent_sources == rev.independent_sources
+        assert a.event_evidence_diversity == rev.evidence_diversity
+        assert a.event_verification_status == rev.verification_status
+        assert a.event_confidence_score == rev.confidence_score
+        assert a.event_confidence_label == rev.confidence_label
+        assert a.event_confidence_explanation_ko == rev.confidence_explanation_ko
+        assert a.event_confidence_explanation_en == rev.confidence_explanation_en
+
+
+def test_legacy_database_without_new_evidence_columns(tmp_path):
+    """5. Test loading from a legacy database where events table lacks the newer evidence columns."""
+    import sqlite3
+    db_file = tmp_path / "legacy.db"
+    conn = sqlite3.connect(str(db_file))
+    conn.execute(
+        """
+        create table schema_version (version integer primary key);
+        """
+    )
+    conn.execute("insert into schema_version values (1)")
+    conn.execute(
+        """
+        create table issues (
+            id integer primary key autoincrement,
+            issue_date text unique not null,
+            title text not null default '',
+            warnings text not null default '[]',
+            metrics text not null default '{}',
+            created_at text not null,
+            sent_at text
+        );
+        """
+    )
+    conn.execute(
+        """
+        create table articles (
+            id integer primary key autoincrement,
+            issue_id integer not null references issues(id) on delete cascade,
+            position integer not null default 0,
+            title text not null,
+            url text not null,
+            source text not null,
+            category text not null,
+            published_at text,
+            summary_ko text not null,
+            summary_en text,
+            why_it_matters_ko text,
+            excerpt text,
+            tags text not null default '[]',
+            score real not null default 0,
+            discovered_via text,
+            source_id text,
+            source_authority real,
+            source_type text,
+            publisher text,
+            article_id text not null,
+            canonical_url text,
+            original_url text,
+            content text,
+            content_source_type text,
+            key_points text not null default '[]',
+            summary_model text,
+            summary_version integer,
+            summary_created_at text,
+            primary_category text,
+            secondary_categories text not null default '[]',
+            topics text not null default '[]',
+            entities text not null default '[]',
+            source_score real,
+            relevance_score real,
+            impact_score real,
+            novelty_score real,
+            recency_score real,
+            priority_score real,
+            event_id text,
+            event_title text,
+            related_article_ids text not null default '[]',
+            is_official integer not null default 0,
+            is_reference integer not null default 0,
+            is_primary_source integer not null default 0,
+            collected_at text
+        );
+        """
+    )
+    conn.execute(
+        """
+        create table events (
+            event_id text primary key,
+            issue_id integer not null references issues(id) on delete cascade,
+            title text not null,
+            category text not null default 'big',
+            importance real not null default 0.0,
+            primary_article_id text,
+            created_at text not null,
+            source_count integer not null default 1,
+            independent_source_count integer not null default 1,
+            has_official_source integer not null default 0,
+            has_regulatory_source integer not null default 0,
+            has_major_media_source integer not null default 0,
+            official_source_url text,
+            official_source_name text,
+            reference_source_name text,
+            related_sources text not null default '[]'
+        );
+        """
+    )
+    conn.execute("insert into issues (id, issue_date, title, created_at) values (1, '2026-09-17', 'Legacy Issue', '2026-09-17T06:00:00')")
+    conn.execute(
+        """
+        insert into events (event_id, issue_id, title, category, importance, created_at, source_count, independent_source_count)
+        values ('ev_legacy', 1, 'Legacy Event', 'big', 80.0, '2026-09-17T06:00:00', 1, 0)
+        """
+    )
+    conn.execute(
+        """
+        insert into articles (issue_id, position, title, url, source, category, summary_ko, article_id, event_id, collected_at)
+        values (1, 0, 'Legacy Article', 'https://legacy.com/1', 'Legacy Source', 'big', '레거시 요약', 'art_legacy', 'ev_legacy', '2026-09-17T06:00:00')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    # Now open with NewsletterStore (which runs migrations/handles missing columns safely)
+    store = NewsletterStore(db_file)
+    issue = store.get_issue("2026-09-17")
+    assert issue is not None
+    assert len(issue.events) == 1
+    assert len(issue.articles) == 1
+    ev = issue.events[0]
+    assert ev.event_id == "ev_legacy"
+    assert ev.evidence_sources == []
+    assert ev.verification_status == "insufficient_evidence"
+
+    art = issue.articles[0]
+    assert art.event_id == "ev_legacy"
+    assert art.event_evidence_sources == []
+    assert art.event_verification_status == "insufficient_evidence"
+
+
+def test_eventless_articles_persistence_and_loading(test_store):
+    """6. Test articles without an event_id load cleanly with default event values."""
+    art = Article(
+        title="Standalone Article without Event",
+        url="https://example.com/standalone",
+        source="Standalone Tech",
+        category="startups",
+        summary_ko="이벤트에 묶이지 않은 단독 기사입니다.",
+        event_id=None,
+    )
+    issue = NewsletterIssue(
+        issue_date="2026-09-17",
+        articles=[art],
+        events=[],
+    )
+    test_store.save_issue(issue)
+
+    reloaded = test_store.get_issue("2026-09-17")
+    assert reloaded is not None
+    assert len(reloaded.articles) == 1
+    assert len(reloaded.events) == 0
+
+    reloaded_art = reloaded.articles[0]
+    assert reloaded_art.event_id is None
+    assert reloaded_art.event_verification_status == "insufficient_evidence"
+    assert reloaded_art.event_confidence_score == 0.0
+    assert reloaded_art.event_confidence_label == "Low"
+
+

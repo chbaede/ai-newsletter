@@ -499,15 +499,16 @@ class NewsletterStore:
 
     def _build_issue(self, conn: sqlite3.Connection, issue_row: sqlite3.Row) -> NewsletterIssue:
         issue_id = issue_row["id"]
-        article_rows = conn.execute(
-            "select * from articles where issue_id = ? order by position asc", (issue_id,)
-        ).fetchall()
-        articles = [self._row_to_article(r) for r in article_rows]
-
         event_rows = conn.execute(
             "select * from events where issue_id = ?", (issue_id,)
         ).fetchall()
         events = [self._row_to_event(r) for r in event_rows]
+        event_by_id = {e.event_id: e for e in events if e.event_id}
+
+        article_rows = conn.execute(
+            "select * from articles where issue_id = ? order by position asc", (issue_id,)
+        ).fetchall()
+        articles = [self._row_to_article(r, event_by_id=event_by_id) for r in article_rows]
 
         warnings = json.loads(issue_row["warnings"] or "[]")
         metrics = json.loads(issue_row["metrics"] or "{}")
@@ -537,7 +538,7 @@ class NewsletterStore:
             metrics=metrics,
         )
 
-    def _row_to_article(self, row: sqlite3.Row) -> Article:
+    def _row_to_article(self, row: sqlite3.Row, event_by_id: dict[str, Event] | None = None) -> Article:
         def _parse_dt(val: str | None) -> datetime | None:
             if not val:
                 return None
@@ -559,7 +560,7 @@ class NewsletterStore:
         title_en = row["title_en"] if "title_en" in keys else ""
         why_it_matters_en = row["why_it_matters_en"] if "why_it_matters_en" in keys else ""
 
-        return Article(
+        art = Article(
             title=row["title"],
             url=row["url"],
             source=row["source"],
@@ -611,6 +612,31 @@ class NewsletterStore:
             evidence_level=row["evidence_level"] if "evidence_level" in keys and row["evidence_level"] else "industry_media",
             collected_at=_parse_dt(row["collected_at"]),
         )
+
+        # Canonicalize event-level metadata from the corresponding Event
+        if art.event_id and event_by_id and art.event_id in event_by_id:
+            ev = event_by_id[art.event_id]
+            art.event_title = ev.title
+            art.event_source_count = ev.source_count
+            art.event_independent_source_count = ev.independent_source_count
+            art.event_has_official_source = ev.has_official_source
+            art.event_has_regulatory_source = ev.has_regulatory_source
+            art.event_has_major_media_source = ev.has_major_media_source
+            art.event_official_source_url = ev.official_source_url
+            art.event_official_source_name = ev.official_source_name
+            art.event_reference_source_name = ev.reference_source_name
+            art.event_related_sources = ev.related_sources
+            art.event_evidence_sources = ev.evidence_sources
+            art.event_primary_sources = ev.primary_sources
+            art.event_independent_sources = ev.independent_sources
+            art.event_evidence_diversity = ev.evidence_diversity
+            art.event_verification_status = ev.verification_status
+            art.event_confidence_score = ev.confidence_score
+            art.event_confidence_label = ev.confidence_label
+            art.event_confidence_explanation_ko = ev.confidence_explanation_ko
+            art.event_confidence_explanation_en = ev.confidence_explanation_en
+
+        return art
 
     def _row_to_event(self, row: sqlite3.Row) -> Event:
         created_at = None
