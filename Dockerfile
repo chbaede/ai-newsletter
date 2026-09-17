@@ -3,8 +3,9 @@ FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    TZ=Asia/Seoul \
-    NEWSLETTER_TIMEZONE=Asia/Seoul \
+    TZ=Europe/Berlin \
+    NEWSLETTER_TIMEZONE=Europe/Berlin \
+    DAILY_COLLECTION_TIME=06:00 \
     PORT=8001 \
     FORWARDED_ALLOW_IPS=127.0.0.1,::1
 

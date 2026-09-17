@@ -36,11 +36,11 @@ def _read_secret(name: str, fallback_file_env: str | None = None) -> str | None:
 
 
 def get_newsletter_timezone(tz_name: str | None = None) -> ZoneInfo:
-    tz = tz_name or "Asia/Seoul"
+    tz = tz_name or "Europe/Berlin"
     try:
         return ZoneInfo(tz)
     except Exception:
-        return ZoneInfo("Asia/Seoul")
+        return ZoneInfo("Europe/Berlin")
 
 
 @dataclass(slots=True)
@@ -53,9 +53,9 @@ class Settings:
     smtp_from: str | None = None
     newsletter_to: str | None = None
     smtp_tls: bool = True
-    daily_collection_time: str = "07:00"
+    daily_collection_time: str = "06:00"
     enable_daily_scheduler: bool = False
-    newsletter_timezone: str = "Asia/Seoul"
+    newsletter_timezone: str = "Europe/Berlin"
     default_language: str = "ko"
     port: int = 8001
     request_timeout_seconds: float = 12.0
@@ -101,9 +101,9 @@ def load_settings() -> Settings:
         smtp_from=os.getenv("SMTP_FROM"),
         newsletter_to=os.getenv("NEWSLETTER_TO"),
         smtp_tls=_bool_env("SMTP_TLS", True),
-        daily_collection_time=os.getenv("DAILY_COLLECTION_TIME", "07:00"),
+        daily_collection_time=os.getenv("DAILY_COLLECTION_TIME", "06:00"),
         enable_daily_scheduler=_bool_env("ENABLE_DAILY_SCHEDULER", False),
-        newsletter_timezone=os.getenv("NEWSLETTER_TIMEZONE", "Asia/Seoul"),
+        newsletter_timezone=os.getenv("NEWSLETTER_TIMEZONE", "Europe/Berlin"),
         default_language=os.getenv("DEFAULT_LANGUAGE", "ko"),
         port=int(os.getenv("PORT") or os.getenv("WEB_PORT") or "8001"),
         request_timeout_seconds=float(os.getenv("REQUEST_TIMEOUT_SECONDS", "12")),
