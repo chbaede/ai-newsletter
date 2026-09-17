@@ -79,12 +79,26 @@ def _match_keyword_in_text(keyword: str, text: str) -> bool:
     return keyword in text
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class EventAnchor:
-    """Structured semantic anchor of an event."""
-    action: str
-    entity: str | None
-    model: str | None
+    """Structured semantic anchor of an event or article."""
+    entities: frozenset[str]
+    models: frozenset[str]
+    themes: frozenset[str]
+    actions: frozenset[str]
+
+
+ACTION_CONFLICTS: dict[frozenset[str], float] = {
+    frozenset({"release", "office_expansion"}): 0.40,
+    frozenset({"release", "executive_movement"}): 0.40,
+    frozenset({"release", "legal"}): 0.45,
+    frozenset({"release", "security"}): 0.40,
+    frozenset({"partnership", "legal"}): 0.45,
+    frozenset({"pricing", "office_expansion"}): 0.50,
+    frozenset({"pricing", "executive_movement"}): 0.50,
+    frozenset({"office_expansion", "executive_movement"}): 0.40,
+    frozenset({"investment", "legal"}): 0.40,
+}
 
 
 @dataclass(slots=True)
@@ -704,6 +718,139 @@ def compute_event_confidence(
     )
 
 
+def select_cluster_representative(
+    cluster: list[int],
+    articles: list[Article],
+    features: list[ArticleClusteringFeatures],
+    window_hours: float = 72.0,
+) -> int:
+    """Select the most authoritative and central representative article for a cluster.
+
+    Deterministic ranking:
+    1. Primary/Official status (1 if official/primary else 0)
+    2. Evidence level strength (primary: 3, independent/research: 2, industry_media: 1, other: 0)
+    3. Authority score (authority_score or source_authority or 0.0)
+    4. Priority score (priority_score or score or 0.0)
+    5. Anchor richness (number of models + entities + actions)
+    6. Average pairwise similarity to other cluster members (centrality)
+    7. Tie-breaker: oldest published_at, then article_id / url
+    """
+    if not cluster:
+        raise ValueError("Cannot select representative from empty cluster")
+    if len(cluster) == 1:
+        return cluster[0]
+
+    def _evidence_rank(a: Article) -> int:
+        lvl = a.evidence_level or ""
+        if lvl == "primary" or a.is_primary_source or a.is_official or a.source_type == "official":
+            return 3
+        if lvl in {"independent", "research"} or a.is_independent_source:
+            return 2
+        if lvl == "industry_media" or a.source_type in {"media", "korean_media"}:
+            return 1
+        return 0
+
+    scores = []
+    for idx in cluster:
+        art = articles[idx]
+        feat = features[idx]
+
+        is_off = 1 if (art.is_official or art.source_type == "official" or art.is_primary_source) else 0
+        ev_rank = _evidence_rank(art)
+        auth_score = getattr(art, "authority_score", 0.0) or getattr(art, "source_authority", 0.0) or 0.0
+        p_score = art.priority_score or art.score or 0.0
+        anchor_richness = len(feat.models) * 2 + len(feat.entities) + len(feat.actions)
+
+        # Average similarity to other cluster members
+        other_sims = [
+            calculate_event_similarity(
+                art,
+                articles[o_idx],
+                window_hours=window_hours,
+                f1=feat,
+                f2=features[o_idx],
+            )
+            for o_idx in cluster
+            if o_idx != idx
+        ]
+        avg_centrality = sum(other_sims) / len(other_sims) if other_sims else 1.0
+
+        pub_iso = art.published_at.isoformat() if art.published_at else ""
+        uid = art.article_id or art.url or ""
+
+        # For sorting: higher ranks/scores first, then earliest published_at (reverse string/negate)
+        scores.append((
+            is_off,
+            ev_rank,
+            auth_score,
+            p_score,
+            anchor_richness,
+            avg_centrality,
+            pub_iso,
+            uid,
+            idx,
+        ))
+
+    # Sort key: descending for quality/centrality, ascending for date/uid (using standard deterministic comparator)
+    # We sort by (is_off DESC, ev_rank DESC, auth_score DESC, p_score DESC, anchor_richness DESC, avg_centrality DESC, pub_iso ASC, uid ASC)
+    def rep_sort_key(item):
+        return (
+            -item[0],
+            -item[1],
+            -item[2],
+            -item[3],
+            -item[4],
+            -item[5],
+            item[6],  # oldest first
+            item[7],  # stable uid
+        )
+
+    scores.sort(key=rep_sort_key)
+    return scores[0][8]
+
+
+def compute_cluster_anchor(
+    cluster: list[int],
+    features: list[ArticleClusteringFeatures],
+) -> EventAnchor:
+    """Compute the combined EventAnchor representing the cluster's aggregate semantic identity."""
+    entities: set[str] = set()
+    models: set[str] = set()
+    themes: set[str] = set()
+    actions: set[str] = set()
+
+    for idx in cluster:
+        f = features[idx]
+        entities.update(f.entities)
+        models.update(f.models)
+        themes.update(f.themes)
+        actions.update(f.actions)
+        # Also map theme-derived actions
+        if "model_release" in f.themes:
+            actions.add("release")
+        if "pricing" in f.themes:
+            actions.add("pricing")
+        if "legal_policy" in f.themes:
+            actions.add("legal")
+        if "security_safety" in f.themes:
+            actions.add("security")
+        if "office_expansion" in f.themes:
+            actions.add("office_expansion")
+        if "executive_movement" in f.themes:
+            actions.add("executive_movement")
+        if "investment" in f.themes:
+            actions.add("investment")
+        if "partnership" in f.themes:
+            actions.add("partnership")
+
+    return EventAnchor(
+        entities=frozenset(entities),
+        models=frozenset(models),
+        themes=frozenset(themes),
+        actions=frozenset(actions),
+    )
+
+
 def is_candidate_compatible_with_cluster(
     candidate_idx: int,
     cluster: list[int],
@@ -713,54 +860,83 @@ def is_candidate_compatible_with_cluster(
     similarity_threshold: float,
     min_cohesion_threshold: float,
 ) -> tuple[bool, float]:
-    """Check if candidate article is cohesive with all cluster members and cluster anchors.
+    """Check if candidate article is cohesive with the cluster representative, all members, and cluster anchors.
 
     Returns (is_compatible, average_similarity_to_cluster).
     """
     candidate_art = articles[candidate_idx]
     candidate_feat = features[candidate_idx]
 
-    leader_idx = cluster[0]
-    leader_art = articles[leader_idx]
-    leader_feat = features[leader_idx]
+    # Select dynamic representative for the cluster
+    rep_idx = select_cluster_representative(cluster, articles, features, window_hours=window_hours)
+    rep_art = articles[rep_idx]
+    rep_feat = features[rep_idx]
 
-    sim_to_leader = calculate_event_similarity(
+    sim_to_rep = calculate_event_similarity(
         candidate_art,
-        leader_art,
+        rep_art,
         window_hours=window_hours,
         f1=candidate_feat,
-        f2=leader_feat,
+        f2=rep_feat,
     )
 
-    if sim_to_leader < similarity_threshold:
+    # Check maximum similarity to any cluster member as well
+    member_sims = [
+        calculate_event_similarity(
+            candidate_art,
+            articles[m_idx],
+            window_hours=window_hours,
+            f1=candidate_feat,
+            f2=features[m_idx],
+        )
+        for m_idx in cluster
+    ]
+    max_member_sim = max(member_sims) if member_sims else 0.0
+
+    if sim_to_rep < similarity_threshold and max_member_sim < similarity_threshold:
         return False, 0.0
 
-    # Cluster-level Anchor Compatibility:
-    # A cluster's identity is defined by the intersection of anchors across its members (or leader's primary anchors).
-    # If the candidate's primary actions strongly clash with the leader/cluster dominant actions,
-    # or if the candidate introduces a conflicting anchor without sharing the leader's primary action/model,
-    # block the merge to prevent bridge articles from pulling unrelated events.
-    leader_actions = leader_feat.actions | {
-        "office_expansion" if "office_expansion" in leader_feat.themes else None,
-        "executive_movement" if "executive_movement" in leader_feat.themes else None,
-        "legal" if "legal_policy" in leader_feat.themes else None,
-        "security" if "security_safety" in leader_feat.themes else None,
-        "investment" if "investment" in leader_feat.themes else None,
-        "pricing" if "pricing" in leader_feat.themes else None,
-        "release" if "model_release" in leader_feat.themes else None,
-    }
-    leader_actions = {a for a in leader_actions if a is not None}
 
-    candidate_actions = candidate_feat.actions | {
-        "office_expansion" if "office_expansion" in candidate_feat.themes else None,
-        "executive_movement" if "executive_movement" in candidate_feat.themes else None,
-        "legal" if "legal_policy" in candidate_feat.themes else None,
-        "security" if "security_safety" in candidate_feat.themes else None,
-        "investment" if "investment" in candidate_feat.themes else None,
-        "pricing" if "pricing" in candidate_feat.themes else None,
-        "release" if "model_release" in candidate_feat.themes else None,
-    }
-    candidate_actions = {a for a in candidate_actions if a is not None}
+    # Aggregate cluster anchor
+    cluster_anchor = compute_cluster_anchor(cluster, features)
+
+    # Candidate effective actions
+    candidate_actions = set(candidate_feat.actions)
+    if "model_release" in candidate_feat.themes:
+        candidate_actions.add("release")
+    if "pricing" in candidate_feat.themes:
+        candidate_actions.add("pricing")
+    if "legal_policy" in candidate_feat.themes:
+        candidate_actions.add("legal")
+    if "security_safety" in candidate_feat.themes:
+        candidate_actions.add("security")
+    if "office_expansion" in candidate_feat.themes:
+        candidate_actions.add("office_expansion")
+    if "executive_movement" in candidate_feat.themes:
+        candidate_actions.add("executive_movement")
+    if "investment" in candidate_feat.themes:
+        candidate_actions.add("investment")
+    if "partnership" in candidate_feat.themes:
+        candidate_actions.add("partnership")
+
+    # Cluster-level action conflict checking against ACTION_CONFLICTS
+    # A true conflict occurs when candidate and cluster have disjoint clashing actions,
+    # without a bridging action or joint context.
+    has_shared_action = bool(candidate_actions & cluster_anchor.actions)
+    has_shared_model = bool(candidate_feat.models & cluster_anchor.models)
+    has_joint_context = (
+        bool(cluster_anchor.themes & candidate_feat.themes & {"partnership", "security_safety", "legal_policy", "model_release"})
+        or (len(cluster_anchor.entities & candidate_feat.entities) >= 2)
+        or has_shared_model
+    )
+
+    for (act1, act2), penalty in ACTION_CONFLICTS.items():
+        if (act1 in candidate_actions and act2 in cluster_anchor.actions) or (
+            act2 in candidate_actions and act1 in cluster_anchor.actions
+        ):
+            if not (has_shared_action or has_joint_context):
+                return False, 0.0
+
 
     # Verify pairwise cohesion across ALL members of the cluster
     sim_sum = 0.0
@@ -798,7 +974,7 @@ def cluster_articles(
     # Deterministic sorting order: Official first, then highest priority_score/score, oldest published_at, then article_id/url
     def sort_key(idx: int) -> tuple[int, float, str, str]:
         a = articles[idx]
-        off = 1 if (a.is_official or a.source_type == "official") else 0
+        off = 1 if (a.is_official or a.source_type == "official" or a.is_primary_source) else 0
         p_score = a.priority_score or a.score or 0.0
         pub = a.published_at.isoformat() if a.published_at else ""
         uid = a.article_id or a.url or ""
@@ -806,10 +982,7 @@ def cluster_articles(
 
     sorted_indices = sorted(range(n), key=sort_key, reverse=True)
 
-    # Form clusters with single-linkage chaining safeguard:
-    # A candidate article joins a cluster only if:
-    # 1. Similarity to cluster leader >= similarity_threshold
-    # 2. Similarity to ALL existing cluster members >= min_cohesion_threshold (no hard-negatives or action clashes)
+    # Form clusters with cluster-representative and event anchor safeguards
     clusters: list[list[int]] = []
     min_cohesion_threshold = similarity_threshold * 0.65  # e.g. 0.39 for 0.60 threshold
 

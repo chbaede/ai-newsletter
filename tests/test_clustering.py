@@ -645,5 +645,270 @@ def test_req10_evidence_metadata_integrity_after_clustering():
         assert art.event_confidence_label == "High"
 
 
+# ── STEP 8.7 Regression Tests: Event Anchor & Representative Hardening ────────
+
+
+def test_step87_test_a_classic_chaining_three_articles():
+    """Test A: Classic chaining (A launch, B broad bridge, C office opening) -> 2 events ([A, B] and [C])."""
+    a = Article(
+        article_id="step87_a_launch",
+        title="OpenAI announces GPT-5 frontier AI model",
+        url="https://openai.com/gpt-5-announcement",
+        source="OpenAI",
+        is_official=True,
+        source_type="official",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="step87_b_bridge",
+        title="OpenAI announces GPT-5 model availability across European London offices",
+        url="https://theverge.com/openai-europe-gpt5",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    c = Article(
+        article_id="step87_c_office",
+        title="OpenAI opens new corporate office in London for sales operations",
+        url="https://techcrunch.com/openai-london-sales",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["OpenAI"],
+    )
+
+    events, event_articles, updated = cluster_articles([a, b, c])
+    assert len(events) == 2, f"Expected 2 events, got {len(events)}"
+
+    a_ev = next(art.event_id for art in updated if art.article_id == "step87_a_launch")
+    b_ev = next(art.event_id for art in updated if art.article_id == "step87_b_bridge")
+    c_ev = next(art.event_id for art in updated if art.article_id == "step87_c_office")
+
+    assert a_ev == b_ev, "Article A and Bridge B should cluster together"
+    assert c_ev != a_ev, "Office opening C must NOT cluster with launch event"
+
+
+def test_step87_test_b_release_broad_office_expansion():
+    """Test B: Release -> Broad -> Office expansion -> 2 separate events."""
+    a = Article(
+        article_id="step87_b_rel",
+        title="Anthropic releases Claude 3.5 Sonnet frontier model",
+        url="https://anthropic.com/claude-3-5-sonnet",
+        source="Anthropic",
+        is_official=True,
+        source_type="official",
+        category="frontier_models",
+        tags=["Anthropic", "Claude 3.5 Sonnet"],
+    )
+    b = Article(
+        article_id="step87_b_broad",
+        title="Anthropic releases Claude 3.5 Sonnet amid expanding European headquarters footprint",
+        url="https://theverge.com/anthropic-europe-growth",
+        source="The Verge",
+        category="frontier_models",
+        tags=["Anthropic", "Claude 3.5 Sonnet"],
+    )
+    c = Article(
+        article_id="step87_b_office",
+        title="Anthropic opens new corporate headquarters and office in Dublin",
+        url="https://techcrunch.com/anthropic-dublin-office",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["Anthropic"],
+    )
+
+    events, event_articles, updated = cluster_articles([a, b, c])
+    assert len(events) == 2, f"Expected 2 events, got {len(events)}"
+
+    a_ev = next(art.event_id for art in updated if art.article_id == "step87_b_rel")
+    b_ev = next(art.event_id for art in updated if art.article_id == "step87_b_broad")
+    c_ev = next(art.event_id for art in updated if art.article_id == "step87_b_office")
+
+    assert a_ev == b_ev
+    assert c_ev != a_ev
+
+
+def test_step87_test_c_release_broad_legal():
+    """Test C: Release -> Broad -> Legal action -> 2 separate events."""
+    a = Article(
+        article_id="step87_c_rel",
+        title="OpenAI announces GPT-5 frontier AI model",
+        url="https://openai.com/gpt-5-announcement",
+        source="OpenAI",
+        is_official=True,
+        source_type="official",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="step87_c_broad",
+        title="OpenAI announces GPT-5 release amid European regulatory developments",
+        url="https://theverge.com/openai-europe-gpt5-reg",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    c = Article(
+        article_id="step87_c_legal",
+        title="EU opens formal antitrust probe and investigation into OpenAI",
+        url="https://reuters.com/eu-openai-probe",
+        source="Reuters",
+        category="frontier_models",
+        tags=["OpenAI"],
+    )
+
+    events, event_articles, updated = cluster_articles([a, b, c])
+    assert len(events) == 2, f"Expected 2 events, got {len(events)}"
+
+    a_ev = next(art.event_id for art in updated if art.article_id == "step87_c_rel")
+    b_ev = next(art.event_id for art in updated if art.article_id == "step87_c_broad")
+    c_ev = next(art.event_id for art in updated if art.article_id == "step87_c_legal")
+
+    assert a_ev == b_ev
+    assert c_ev != a_ev
+
+
+def test_step87_test_d_pricing_broad_release():
+    """Test D: Pricing -> Broad -> Release (When in same model release launch context -> 1 event or 2 depending on anchor consistency)."""
+    # Distinct pricing vs release stories stay separate without joint release launch anchor
+    a = Article(
+        article_id="step87_d_launch",
+        title="OpenAI launches GPT-5 frontier AI model for all users",
+        url="https://openai.com/gpt-5-launch",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="step87_d_pricing",
+        title="OpenAI introduces new subscription pricing and API rates for GPT-5",
+        url="https://techcrunch.com/openai-gpt-5-pricing",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+
+    events, event_articles, updated = cluster_articles([a, b])
+    assert len(events) == 2, f"Expected 2 separate events for launch vs pricing, got {len(events)}"
+
+
+def test_step87_test_e_three_unrelated_corporate_events():
+    """Test E: Unrelated corporate events (office expansion, investment, legal action -> 3 events)."""
+    a = Article(
+        article_id="step87_e_office",
+        title="Google opens new corporate headquarters and office in London",
+        url="https://theverge.com/google-london-office",
+        source="The Verge",
+        category="frontier_models",
+        tags=["Google"],
+    )
+    b = Article(
+        article_id="step87_e_funding",
+        title="Google raises funding and investment series for European startups",
+        url="https://techcrunch.com/google-europe-funding",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["Google"],
+    )
+    c = Article(
+        article_id="step87_e_legal",
+        title="EU court issues antitrust fine and regulatory lawsuit against Google",
+        url="https://reuters.com/google-eu-fine",
+        source="Reuters",
+        category="frontier_models",
+        tags=["Google"],
+    )
+
+    events, event_articles, updated = cluster_articles([a, b, c])
+    assert len(events) == 3, f"Expected 3 separate events, got {len(events)}"
+
+
+def test_step87_test_f_legitimate_cross_publisher_coverage():
+    """Test F: Legitimate cross-publisher same event coverage across 4 distinct publishers -> 1 event."""
+    a1 = Article(
+        article_id="step87_f_official",
+        title="OpenAI announces GPT-5 frontier multimodal AI system",
+        url="https://openai.com/gpt-5",
+        source="OpenAI",
+        publisher="OpenAI",
+        is_official=True,
+        source_type="official",
+        evidence_level="primary",
+        is_primary_source=True,
+        tags=["OpenAI", "GPT-5"],
+    )
+    a2 = Article(
+        article_id="step87_f_reuters",
+        title="OpenAI launches GPT-5 with major multimodal intelligence breakthroughs",
+        url="https://reuters.com/openai-gpt5",
+        source="Reuters",
+        publisher="Reuters",
+        is_official=False,
+        source_type="media",
+        evidence_level="independent",
+        is_independent_source=True,
+        tags=["OpenAI", "GPT-5"],
+    )
+    a3 = Article(
+        article_id="step87_f_bloomberg",
+        title="OpenAI debuts GPT-5 frontier AI model for enterprise and consumers",
+        url="https://bloomberg.com/openai-gpt5",
+        source="Bloomberg",
+        publisher="Bloomberg",
+        is_official=False,
+        source_type="media",
+        evidence_level="independent",
+        is_independent_source=True,
+        tags=["OpenAI", "GPT-5"],
+    )
+    a4 = Article(
+        article_id="step87_f_techcrunch",
+        title="OpenAI's GPT-5 launches with advanced reasoning capabilities",
+        url="https://techcrunch.com/openai-gpt5-launch",
+        source="TechCrunch",
+        publisher="TechCrunch",
+        is_official=False,
+        source_type="media",
+        evidence_level="industry_media",
+        tags=["OpenAI", "GPT-5"],
+    )
+
+    events, event_articles, updated = cluster_articles([a1, a2, a3, a4])
+    assert len(events) == 1, f"Expected 1 event, got {len(events)}"
+    ev = events[0]
+    assert ev.source_count == 4
+    assert ev.independent_source_count == 2
+    assert ev.has_official_source is True
+    assert ev.verification_status == "multi_source"
+
+
+def test_step87_test_g_broader_multi_entity_safety_initiative():
+    """Test G: Broader multi-entity safety initiative across OpenAI and Anthropic -> 1 event."""
+    a1 = Article(
+        article_id="step87_g_pact",
+        title="OpenAI and Anthropic announce joint AI safety initiative and pact",
+        url="https://techcrunch.com/openai-anthropic-safety-pact",
+        source="TechCrunch",
+        publisher="TechCrunch",
+        evidence_level="independent",
+        tags=["OpenAI", "Anthropic"],
+    )
+    a2 = Article(
+        article_id="step87_g_reuters",
+        title="Anthropic announces partnership with OpenAI on frontier model safety evaluations",
+        url="https://reuters.com/anthropic-openai-safety",
+        source="Reuters",
+        publisher="Reuters",
+        evidence_level="independent",
+        tags=["OpenAI", "Anthropic"],
+    )
+
+    events, event_articles, updated = cluster_articles([a1, a2])
+    assert len(events) == 1, f"Expected 1 joint event, got {len(events)}"
+    assert events[0].source_count == 2
+    assert "safety" in events[0].title.lower() or "openai" in events[0].title.lower()
+
+
+
 
 
