@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 from .models import Article, NewsletterIssue
 from .priority import LEVELS, assess_priority
+from .sources import source_evidence_level
 from .taxonomy import CATEGORY_LABELS_EN, CATEGORY_LABELS_KO
 
 HANGUL_RE = re.compile(r"[가-힣]")
@@ -23,29 +24,29 @@ class RegionSignal:
 UI_REGION_FILTERS = [
     RegionSignal("all", "전체", "All"),
     RegionSignal("global", "글로벌", "Global"),
-    RegionSignal("us", "미국", "US"),
-    RegionSignal("korea", "한국", "Korea"),
+    RegionSignal("us", "미국", "United States"),
+    RegionSignal("korea", "한국", "South Korea"),
     RegionSignal("europe", "유럽", "Europe"),
     RegionSignal("asia", "아시아", "Asia"),
 ]
 
 REGION_FILTERS = UI_REGION_FILTERS
-REGION_LABELS = {r.key: r.label_ko for r in REGION_FILTERS}
 
 REGION_TERMS = {
     "us": [
-        "united states", "usa", "u.s.", "america", "san francisco", "silicon valley",
-        "seattle", "austin", "new york", "california", "openai", "anthropic", "google",
-        "meta", "microsoft", "nvidia", "apple", "amazon", "xai", "cursor", "devin",
+        "us", "u.s.", "united states", "america", "american", "california",
+        "silicon valley", "san francisco", "new york", "washington", "austin",
+        "seattle", "sec", "ftc", "nist", "white house", "congress", "senate",
     ],
     "korea": [
-        "korea", "south korea", "korean", "seoul", "pangyo", "한국", "서울", "판교",
-        "네이버", "카카오", "naver", "kakao", "upstage", "업스테이지", "lg ai", "exaone",
-        "sk하이닉스", "삼성전자", "과기정통부", "ai기본법", "리벨리온", "퓨리오사", "wrtn",
+        "korea", "korean", "seoul", "south korea", "과기정통부", "한국", "삼성",
+        "sk하이닉스", "네이버", "카카오", "lg", "ai타임스", "지디넷", "전자신문",
+        "매일경제", "한국경제", "긱뉴스",
     ],
     "europe": [
-        "europe", "eu", "france", "germany", "uk", "united kingdom", "london", "paris",
-        "berlin", "mistral", "deepmind", "eu ai act", "european commission", "brussels",
+        "europe", "european", "eu", "eu ai act", "brussels", "germany", "france",
+        "uk", "britain", "london", "paris", "berlin", "mistral", "asml",
+        "european commission", "cma", "gdpr",
     ],
     "asia": [
         "asia", "china", "japan", "taiwan", "singapore", "tsmc", "kuaishou", "tokyo",
@@ -81,12 +82,13 @@ class SourceTypeFilter:
 
 
 SOURCE_TYPE_FILTERS = [
-    SourceTypeFilter("all", "All Sources", "전체 출처"),
-    SourceTypeFilter("official", "Official Labs", "공식 뉴스룸"),
-    SourceTypeFilter("research", "Research / Academic", "연구/학술"),
-    SourceTypeFilter("media", "Global Media", "글로벌 미디어"),
-    SourceTypeFilter("korean_media", "Korean Media", "국내 미디어"),
-    SourceTypeFilter("regulator", "Regulators", "규제 기구"),
+    SourceTypeFilter("all", "All", "전체"),
+    SourceTypeFilter("primary", "Primary", "1차 출처"),
+    SourceTypeFilter("research", "Research", "연구"),
+    SourceTypeFilter("independent", "Independent", "독립 취재"),
+    SourceTypeFilter("industry_media", "Industry Media", "산업 미디어"),
+    SourceTypeFilter("community", "Community", "커뮤니티"),
+    SourceTypeFilter("discovery", "Discovery", "검색 집계"),
 ]
 
 INTELLIGENCE_SECTION_DEFINITIONS = [
@@ -295,16 +297,25 @@ def source_type_keys_for_article(article: Article) -> list[str]:
 
 
 def canonical_source_type(article: Article) -> str:
-    st = (article.source_type or "media").lower()
-    if st in {"regulator"}:
-        return "regulator"
-    if st in {"research"}:
-        return "research"
-    if st in {"official"}:
-        return "official"
-    if st in {"korean_media"}:
-        return "korean_media"
-    return "media"
+    """Return the canonical evidence level for UI source filtering.
+
+    Maps directly to the backend evidence taxonomy:
+    primary, research, independent, industry_media, community, discovery.
+    Supports backward-compatibility with legacy source_type values.
+    """
+    if article.evidence_level:
+        lvl = article.evidence_level.strip().lower()
+        if lvl in {"primary", "research", "independent", "industry_media", "community", "discovery"}:
+            return lvl
+    if article.is_primary_source:
+        return "primary"
+    if article.is_independent_source:
+        return "independent"
+    if article.is_discovery_source:
+        return "discovery"
+
+    # Fallback to source_evidence_level inference
+    return source_evidence_level(article.publisher or article.source or article.source_type)
 
 
 def display_title_ko(article: Article) -> str:

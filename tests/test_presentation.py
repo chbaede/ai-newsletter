@@ -151,3 +151,75 @@ def test_display_source_transparency_all_evidence_levels():
         assert t.evidence_badge.label_ko == EVIDENCE_BADGES[lvl].label_ko
 
 
+# ── Tests for Evidence Taxonomy Source Filtering Alignment ────────────────────
+
+def test_source_type_filters_evidence_taxonomy_alignment():
+    """Verify SOURCE_TYPE_FILTERS conforms to the evidence taxonomy with correct Korean and English labels."""
+    from ai_newsletter.presentation import SOURCE_TYPE_FILTERS
+
+    keys = [f.key for f in SOURCE_TYPE_FILTERS]
+    assert keys == ["all", "primary", "research", "independent", "industry_media", "community", "discovery"]
+
+    labels_ko = {f.key: f.label_ko for f in SOURCE_TYPE_FILTERS}
+    assert labels_ko == {
+        "all": "전체",
+        "primary": "1차 출처",
+        "research": "연구",
+        "independent": "독립 취재",
+        "industry_media": "산업 미디어",
+        "community": "커뮤니티",
+        "discovery": "검색 집계",
+    }
+
+    labels_en = {f.key: f.label_en for f in SOURCE_TYPE_FILTERS}
+    assert labels_en == {
+        "all": "All",
+        "primary": "Primary",
+        "research": "Research",
+        "independent": "Independent",
+        "industry_media": "Industry Media",
+        "community": "Community",
+        "discovery": "Discovery",
+    }
+
+
+def test_canonical_source_type_and_counts():
+    """Verify canonical_source_type resolves correctly for each evidence level and legacy source types."""
+    from ai_newsletter.presentation import canonical_source_type, source_type_counts, prepare_article_view
+
+    a_prim = Article(title="A1", url="u1", source="OpenAI", evidence_level="primary", is_primary_source=True)
+    a_res = Article(title="A2", url="u2", source="arXiv", evidence_level="research")
+    a_ind = Article(title="A3", url="u3", source="Reuters", evidence_level="independent", is_independent_source=True)
+    a_med = Article(title="A4", url="u4", source="TechCrunch", evidence_level="industry_media")
+    a_com = Article(title="A5", url="u5", source="Hacker News", evidence_level="community")
+    a_disc = Article(title="A6", url="u6", source="Google News", evidence_level="discovery", is_discovery_source=True)
+
+    # Legacy articles without explicit evidence_level
+    a_leg_off = Article(title="A7", url="u7", source="OpenAI", source_type="official")
+    a_leg_reg = Article(title="A8", url="u8", source="NIST", source_type="regulator")
+
+    assert canonical_source_type(a_prim) == "primary"
+    assert canonical_source_type(a_res) == "research"
+    assert canonical_source_type(a_ind) == "independent"
+    assert canonical_source_type(a_med) == "industry_media"
+    assert canonical_source_type(a_com) == "community"
+    assert canonical_source_type(a_disc) == "discovery"
+    assert canonical_source_type(a_leg_off) == "primary"
+    assert canonical_source_type(a_leg_reg) == "primary"
+
+    articles = [a_prim, a_res, a_ind, a_med, a_com, a_disc]
+    counts = source_type_counts(articles)
+    assert counts["all"] == 6
+    assert counts["primary"] == 1
+    assert counts["research"] == 1
+    assert counts["independent"] == 1
+    assert counts["industry_media"] == 1
+    assert counts["community"] == 1
+    assert counts["discovery"] == 1
+
+    # Check article view has matching data attribute
+    v_disc = prepare_article_view(a_disc)
+    assert v_disc.source_type == "discovery"
+
+
+
