@@ -192,6 +192,21 @@
         </div>
       </div>
 
+      <!-- Top Native Ad Banner -->
+      <aside class="ad-container ad-container--banner" aria-label="스폰서 링크">
+        <div class="ad-badge">SPONSORED</div>
+        <!-- 스마트인포_디스플레이광고 -->
+        <ins class="adsbygoogle"
+             style="display:block"
+             data-ad-client="ca-pub-6854824605420161"
+             data-ad-slot="9426228178"
+             data-ad-format="auto"
+             data-full-width-responsive="true"></ins>
+        <script>
+             (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+      </aside>
+
       <p class="empty-note" data-filter-empty style="display:none;">
         <span class="lang-ko">선택한 필터 조건에 해당하는 기사가 없습니다.</span>
         <span class="lang-en" style="display:none;">No articles match the selected filters.</span>
@@ -338,6 +353,21 @@
               {% endfor %}
             </div>
           </section>
+          {% if loop.index == 2 %}
+            <aside class="ad-container ad-container--mid" aria-label="스폰서 링크">
+              <div class="ad-badge">SPONSORED</div>
+              <!-- 스마트인포_디스플레이광고 -->
+              <ins class="adsbygoogle"
+                   style="display:block"
+                   data-ad-client="ca-pub-6854824605420161"
+                   data-ad-slot="9426228178"
+                   data-ad-format="auto"
+                   data-full-width-responsive="true"></ins>
+              <script>
+                   (adsbygoogle = window.adsbygoogle || []).push({});
+              </script>
+            </aside>
+          {% endif %}
         {% endif %}
       {% endfor %}
 

@@ -1,7 +1,7 @@
 :root {
   color-scheme: light;
-  --ink: #0f172a;
-  --ink-secondary: #334155;
+  --ink: #0b132b;
+  --ink-secondary: #2d3748;
   --muted: #64748b;
   --muted-light: #94a3b8;
   --line: #e2e8f0;
@@ -9,21 +9,22 @@
   --paper: #f8fafc;
   --surface: #ffffff;
   --surface-soft: #f1f5f9;
-  --accent: #0f766e;
-  --accent-strong: #0f172a;
+  --surface-card: #ffffff;
+  --accent: #0284c7;
+  --accent-strong: #0369a1;
   --blue: #2563eb;
   --amber: #d97706;
   --danger: #dc2626;
-  --critical: #dc2626;
+  --critical: #e11d48;
   --high: #d97706;
   --medium: #2563eb;
   --watch: #64748b;
   --shadow-soft: 0 10px 25px -5px rgba(15, 23, 42, 0.06), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
-  --shadow-card: 0 2px 8px -2px rgba(15, 23, 42, 0.05), 0 1px 3px -1px rgba(15, 23, 42, 0.03);
-  --shadow-hover: 0 12px 24px -4px rgba(15, 23, 42, 0.08), 0 4px 8px -2px rgba(15, 23, 42, 0.03);
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --shadow-card: 0 4px 16px -2px rgba(15, 23, 42, 0.04), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+  --shadow-hover: 0 16px 32px -4px rgba(15, 23, 42, 0.08), 0 6px 12px -2px rgba(15, 23, 42, 0.04);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 }
 
 * {
@@ -33,10 +34,11 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--paper);
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
   color: var(--ink);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: 'Plus Jakarta Sans', Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button,
@@ -1795,4 +1797,99 @@ ins.adsbygoogle:empty {
 .evidence-expansion-content strong {
   color: #334155;
   min-width: 80px;
+}
+
+/* ── AdSense Native Placement Containers ──────────────────────────────── */
+.ad-container {
+  margin: 28px 0;
+  padding: 18px 20px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  text-align: center;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.ad-container--banner {
+  margin-top: 10px;
+  margin-bottom: 28px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+}
+
+.ad-container--mid {
+  margin: 36px 0;
+  border-left: 4px solid #0284c7;
+}
+
+.ad-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+/* ── Refined Article Cards & Section Header Polish ─────────────────────── */
+.section-header h3 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.article-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.04), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.article-card:hover {
+  transform: translateY(-3px);
+  border-color: #cbd5e1;
+  box-shadow: 0 16px 32px -4px rgba(15, 23, 42, 0.08), 0 6px 12px -2px rgba(15, 23, 42, 0.04);
+}
+
+.article-card h4.article-title a {
+  color: #0f172a;
+  text-decoration: none;
+  font-weight: 700;
+  transition: color 0.15s ease;
+}
+
+.article-card h4.article-title a:hover {
+  color: #0284c7;
+}
+
+.why-it-matters {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-left: 3px solid #0284c7;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.read-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0284c7;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.read-link:hover {
+  color: #0369a1;
+  text-decoration: underline;
 }
