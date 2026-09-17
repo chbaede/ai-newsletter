@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -450,15 +450,38 @@ class NewsletterStore:
                 "update issues set sent_at = ? where issue_date = ?", (now, issue_date)
             )
 
-    def recent_articles(self, days: int = 3) -> list[Article]:
+    def recent_articles(self, days: int = 3, now_dt: datetime | None = None) -> list[Article]:
+        """Retrieve recent articles within the specified number of days for deduplication.
+
+        Uses published_at when available, falling back to collected_at.
+        Articles with invalid/non-positive days return an empty list.
+        """
+        if not isinstance(days, (int, float)) or days <= 0:
+            return []
+
+        now = now_dt or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        else:
+            now = now.astimezone(timezone.utc)
+
+        cutoff = now - timedelta(days=days)
+
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                select * from articles
-                order by id desc limit 200
-                """
-            ).fetchall()
-            return [self._row_to_article(r) for r in rows]
+            rows = conn.execute("select * from articles order by id desc").fetchall()
+            results: list[Article] = []
+            for r in rows:
+                art = self._row_to_article(r)
+                ref_dt = art.published_at or art.collected_at
+                if ref_dt is not None:
+                    if ref_dt.tzinfo is None:
+                        ref_dt = ref_dt.replace(tzinfo=timezone.utc)
+                    else:
+                        ref_dt = ref_dt.astimezone(timezone.utc)
+
+                    if ref_dt >= cutoff:
+                        results.append(art)
+            return results
 
     def mail_settings(self) -> dict[str, Any]:
         with self._connect() as conn:
