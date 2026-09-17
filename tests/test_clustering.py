@@ -422,6 +422,7 @@ def test_req9_single_linkage_chaining_safeguard_a_b_c():
     """9. A-B-C chaining safeguard: A and C are clearly unrelated and must NOT be in the same cluster."""
     # A: Pure model release
     a = Article(
+        article_id="art_a",
         title="OpenAI announces GPT-5 frontier model",
         url="https://openai.com/gpt-5-announcement",
         source="OpenAI",
@@ -430,6 +431,7 @@ def test_req9_single_linkage_chaining_safeguard_a_b_c():
     )
     # B: Broad article mentioning GPT-5 and London compute deployment
     b = Article(
+        article_id="art_b",
         title="OpenAI discusses GPT-5 rollout plans and European infrastructure in London",
         url="https://theverge.com/openai-europe-gpt5",
         source="The Verge",
@@ -438,6 +440,7 @@ def test_req9_single_linkage_chaining_safeguard_a_b_c():
     )
     # C: Pure corporate office opening for sales
     c = Article(
+        article_id="art_c",
         title="OpenAI opens new corporate office in London for sales operations",
         url="https://techcrunch.com/openai-london-sales",
         source="TechCrunch",
@@ -446,12 +449,143 @@ def test_req9_single_linkage_chaining_safeguard_a_b_c():
     )
 
     events, event_articles, updated = cluster_articles([a, b, c])
-    # The cluster containing A must NOT contain C!
-    cluster_a = next(e for e in events if e.primary_article_id == a.article_id or a.article_id in [art.article_id for art in updated if art.event_id == e.event_id])
-    articles_in_a = [art for art in updated if art.event_id == cluster_a.event_id]
-    titles_in_a = [art.title for art in articles_in_a]
-    assert c.title not in titles_in_a, "Article C (London office) must NOT be chained into Article A's cluster!"
-    assert len(events) >= 2, f"Expected at least 2 events to prevent A-C chaining, got {len(events)}"
+    assert len(events) == 2, f"Expected exactly 2 events (A+B and C), got {len(events)}"
+
+    cluster_a = next(e for e in events if a.article_id in [art.article_id for art in updated if art.event_id == e.event_id])
+    cluster_c = next(e for e in events if c.article_id in [art.article_id for art in updated if art.event_id == e.event_id])
+
+    assert cluster_a.event_id != cluster_c.event_id
+    articles_in_a = [art.article_id for art in updated if art.event_id == cluster_a.event_id]
+    articles_in_c = [art.article_id for art in updated if art.event_id == cluster_c.event_id]
+
+    assert set(articles_in_a) == {"art_a", "art_b"}
+    assert set(articles_in_c) == {"art_c"}
+
+
+def test_bridge_a_release_bridge_office_expansion():
+    """Bridge Test A: Launch story (A) and bridge story (B) cluster together; office opening (C) stays separate."""
+    a = Article(
+        article_id="art_a_launch",
+        title="OpenAI announces GPT-5 frontier AI model",
+        url="https://openai.com/gpt-5-announcement",
+        source="OpenAI",
+        is_official=True,
+        source_type="official",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="art_b_bridge",
+        title="OpenAI announces GPT-5 model availability across European London offices",
+        url="https://theverge.com/openai-europe-gpt5",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    c = Article(
+        article_id="art_c_office",
+        title="OpenAI opens new corporate office in London for sales operations",
+        url="https://techcrunch.com/openai-london-sales",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["OpenAI"],
+    )
+
+    events, event_articles, updated = cluster_articles([a, b, c])
+    assert len(events) == 2, f"Expected 2 events, got {len(events)}"
+
+    a_ev = next(art.event_id for art in updated if art.article_id == "art_a_launch")
+    b_ev = next(art.event_id for art in updated if art.article_id == "art_b_bridge")
+    c_ev = next(art.event_id for art in updated if art.article_id == "art_c_office")
+
+    assert a_ev == b_ev, "Article A and Bridge B should cluster together"
+    assert c_ev != a_ev, "Office opening C must NOT cluster with launch event"
+
+
+def test_bridge_b_release_bridge_legal():
+    """Bridge Test B: Launch story (A) and bridge story (B) cluster; pure regulatory investigation (C) stays separate."""
+    a = Article(
+        article_id="art_a_release",
+        title="OpenAI announces GPT-5 frontier AI model",
+        url="https://openai.com/gpt-5-announcement",
+        source="OpenAI",
+        is_official=True,
+        source_type="official",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="art_b_bridge",
+        title="OpenAI announces GPT-5 release amid European regulatory developments",
+        url="https://theverge.com/openai-europe-gpt5-reg",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    c = Article(
+        article_id="art_c_probe",
+        title="EU opens formal antitrust probe and investigation into OpenAI",
+        url="https://reuters.com/eu-openai-probe",
+        source="Reuters",
+        category="frontier_models",
+        tags=["OpenAI"],
+    )
+
+    events, event_articles, updated = cluster_articles([a, b, c])
+    assert len(events) == 2, f"Expected 2 events, got {len(events)}"
+
+    a_ev = next(art.event_id for art in updated if art.article_id == "art_a_release")
+    b_ev = next(art.event_id for art in updated if art.article_id == "art_b_bridge")
+    c_ev = next(art.event_id for art in updated if art.article_id == "art_c_probe")
+
+    assert a_ev == b_ev, "Article A and Bridge B should cluster together"
+    assert c_ev != a_ev, "EU antitrust probe C must NOT cluster with model launch event"
+
+
+def test_bridge_c_pricing_bridge_release():
+    """Bridge Test C: Launch story (A) vs Pricing announcement (B) must remain cleanly separated."""
+    a = Article(
+        article_id="art_a_launch",
+        title="OpenAI launches GPT-5 flagship model for general availability",
+        url="https://openai.com/gpt-5-launch",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="art_b_pricing",
+        title="OpenAI introduces new subscription pricing and API rates for GPT-5",
+        url="https://techcrunch.com/openai-gpt-5-pricing",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+
+    events, event_articles, updated = cluster_articles([a, b])
+    assert len(events) == 2, f"Expected 2 separate events for launch vs pricing, got {len(events)}"
+
+
+def test_bridge_d_two_unrelated_corporate_events():
+    """Bridge Test D: Office opening (A) vs Executive appointment (B) must remain separate."""
+    a = Article(
+        article_id="art_a_office",
+        title="Anthropic opens new corporate headquarters and office in London",
+        url="https://techcrunch.com/anthropic-london",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["Anthropic"],
+    )
+    b = Article(
+        article_id="art_b_exec",
+        title="Anthropic appoints new chief operating officer and executive hire",
+        url="https://reuters.com/anthropic-exec",
+        source="Reuters",
+        category="frontier_models",
+        tags=["Anthropic"],
+    )
+
+    events, event_articles, updated = cluster_articles([a, b])
+    assert len(events) == 2, f"Expected 2 separate events for office vs executive hire, got {len(events)}"
 
 
 def test_req10_evidence_metadata_integrity_after_clustering():
@@ -509,6 +643,7 @@ def test_req10_evidence_metadata_integrity_after_clustering():
         assert art.event_independent_source_count == 1
         assert art.event_verification_status == "independently_reported"
         assert art.event_confidence_label == "High"
+
 
 
 

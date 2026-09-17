@@ -50,24 +50,26 @@ AI_MODEL_PATTERNS = [
 
 AI_EVENT_THEMES = {
     "model_release": ["release", "releases", "released", "launch", "launches", "launched", "unveil", "unveils", "unveiled", "debut", "debuts", "debuted", "introduce", "introduces", "introduced", "open weights", "rollout", "announces", "announced", "announce", "출시", "공개", "발표", "선보여", "오픈소스"],
-    "pricing": ["pricing", "price", "prices", "subscription", "cost", "tier", "tiers", "plans", "rates", "가격", "요금", "구독", "비용", "단가"],
+    "pricing": ["pricing", "price", "prices", "subscription", "cost", "tier", "tiers", "rates", "가격", "요금", "구독", "비용", "단가"],
     "benchmarking": ["swe-bench", "mmlu", "benchmark", "benchmarks", "outperforms", "beats", "sota", "evaluation", "evals", "벤치마크", "성능", "평가"],
     "investment": ["funding", "valuation", "billion", "raises funding", "series", "ipo", "invest", "investment", "투자", "유치", "펀딩"],
     "partnership": ["partnership", "partners", "collaboration", "collaborates", "alliance", "joint", "agreement", "pact", "initiative", "team up", "teams up", "pacts", "제휴", "협력", "파트너십", "동맹", "협약", "손잡고", "협업", "이니셔티브"],
     "legal_policy": ["lawsuit", "sues", "sued", "antitrust", "copyright", "ban", "compliance", "eu ai act", "regulation", "regulatory", "court", "probe", "investigation", "investigates", "fine", "fined", "소송", "고소", "제소", "규제", "위반", "법안", "조사", "과징금"],
     "security_safety": ["jailbreak", "vulnerability", "prompt injection", "exploit", "red team", "safety", "aisi", "alignment", "guardrail", "risk", "risks", "breach", "보안", "취약점", "안전", "안전성", "위험"],
     "datacenter_hardware": ["datacenter", "tape-out", "foundry", "hbm", "hbm3e", "gigawatt", "반도체", "양산", "데이터센터"],
-    "corporate_expansion": ["office", "headquarters", "expansion", "expands", "expand", "hire", "hires", "executive", "resign", "resignation", "appointment", "사옥", "지사", "영입", "사임", "확장", "런던"],
+    "office_expansion": ["office", "offices", "headquarters", "hq", "사옥", "지사", "신사옥"],
+    "executive_movement": ["hire", "hires", "hired", "executive", "executives", "resign", "resigns", "resignation", "appointment", "appoints", "appointed", "영입", "사임", "임명", "선임"],
 }
 
 AI_ACTION_ANCHORS = {
     "release": ["release", "releases", "released", "launch", "launches", "launched", "unveil", "unveils", "unveiled", "debut", "debuts", "introduce", "introduces", "introduced", "rollout", "announces", "announced", "announce", "출시", "공개", "발표", "선보여"],
-    "pricing": ["pricing", "price", "prices", "subscription", "cost", "tier", "tiers", "plans", "rates", "가격", "요금", "구독", "비용", "단가"],
+    "pricing": ["pricing", "price", "prices", "subscription", "cost", "tier", "tiers", "rates", "가격", "요금", "구독", "비용", "단가"],
     "partnership": ["partner", "partners", "partnership", "collaborate", "collaborates", "collaboration", "alliance", "joint", "agreement", "pact", "initiative", "team up", "teams up", "제휴", "협력", "파트너십", "동맹", "협약", "손잡고", "협업", "이니셔티브"],
     "legal": ["lawsuit", "sue", "sues", "sued", "antitrust", "copyright", "ban", "compliance", "regulation", "regulatory", "court", "probe", "investigation", "investigates", "fine", "fined", "소송", "고소", "제소", "규제", "위반", "법안", "조사", "과징금"],
     "security": ["safety", "aisi", "alignment", "jailbreak", "vulnerability", "exploit", "red team", "guardrail", "safeguard", "breach", "안전", "안전성", "보안", "취약점", "위험"],
     "investment": ["funding", "valuation", "billion", "raises funding", "series", "ipo", "invest", "investment", "투자", "유치", "펀딩"],
-    "corporate": ["office", "headquarters", "expansion", "expands", "expand", "hire", "hires", "hired", "executive", "resign", "resigns", "resignation", "appointment", "사옥", "지사", "영입", "사임", "임명", "확장"],
+    "office_expansion": ["office", "offices", "headquarters", "hq", "사옥", "지사", "신사옥"],
+    "executive_movement": ["hire", "hires", "hired", "executive", "executives", "resign", "resigns", "resignation", "appointment", "appoints", "appointed", "영입", "사임", "임명", "선임"],
 }
 
 
@@ -75,6 +77,14 @@ def _match_keyword_in_text(keyword: str, text: str) -> bool:
     if re.search(r"^[a-z0-9\s_-]+$", keyword):
         return bool(re.search(r"\b" + re.escape(keyword) + r"\b", text, re.I))
     return keyword in text
+
+
+@dataclass(slots=True)
+class EventAnchor:
+    """Structured semantic anchor of an event."""
+    action: str
+    entity: str | None
+    model: str | None
 
 
 @dataclass(slots=True)
@@ -86,6 +96,40 @@ class ArticleClusteringFeatures:
     tokens: set[str]
     themes: set[str]
     actions: set[str]
+    anchors: set[tuple[str, str | None, str | None]]
+
+
+def extract_event_anchors(
+    entities: set[str],
+    models: set[str],
+    actions: set[str],
+    themes: set[str],
+) -> set[tuple[str, str | None, str | None]]:
+    """Extract structured (action, entity, model) anchors from extracted features."""
+    anchors = set()
+    all_actions = actions | {
+        "office_expansion" if "office_expansion" in themes else None,
+        "executive_movement" if "executive_movement" in themes else None,
+        "legal" if "legal_policy" in themes else None,
+        "security" if "security_safety" in themes else None,
+        "investment" if "investment" in themes else None,
+        "pricing" if "pricing" in themes else None,
+        "release" if "model_release" in themes else None,
+    }
+    cleaned_actions = {a for a in all_actions if a is not None}
+
+    if not cleaned_actions:
+        cleaned_actions = {"general"}
+
+    target_entities = entities if entities else {None}
+    target_models = models if models else {None}
+
+    for act in cleaned_actions:
+        for ent in target_entities:
+            for mod in target_models:
+                anchors.add((act, ent, mod))
+
+    return anchors
 
 
 def extract_clustering_features(article: Article) -> ArticleClusteringFeatures:
@@ -127,6 +171,8 @@ def extract_clustering_features(article: Article) -> ArticleClusteringFeatures:
         if any(_match_keyword_in_text(kw, full_text) for kw in keywords):
             actions.add(action_name)
 
+    anchors = extract_event_anchors(found_entities, models, actions, themes)
+
     return ArticleClusteringFeatures(
         text=full_text,
         title_text=full_title_text.lower(),
@@ -135,6 +181,7 @@ def extract_clustering_features(article: Article) -> ArticleClusteringFeatures:
         tokens=tokens,
         themes=themes,
         actions=actions,
+        anchors=anchors,
     )
 
 
@@ -197,9 +244,18 @@ def calculate_event_similarity(
     if ("pricing" in f1.actions) ^ ("pricing" in f2.actions):
         return 0.0
 
-    # Strict separation between corporate expansion (office/hiring/executives) and non-corporate stories
-    if ("corporate_expansion" in f1.themes) ^ ("corporate_expansion" in f2.themes):
-        if not (f1.themes & f2.themes):
+    # Strict separation between pure office expansion and non-office stories (unless shared release/partnership theme)
+    if (("office_expansion" in f1.themes) or ("office_expansion" in f1.actions)) ^ (
+        ("office_expansion" in f2.themes) or ("office_expansion" in f2.actions)
+    ):
+        if not (f1.themes & f2.themes & {"partnership", "investment", "model_release"}):
+            return 0.0
+
+    # Strict separation between pure executive movement and non-executive stories (unless shared release/partnership theme)
+    if (("executive_movement" in f1.themes) or ("executive_movement" in f1.actions)) ^ (
+        ("executive_movement" in f2.themes) or ("executive_movement" in f2.actions)
+    ):
+        if not (f1.themes & f2.themes & {"partnership", "investment", "model_release"}):
             return 0.0
 
     # 4. Action & Theme clash penalties
@@ -208,6 +264,14 @@ def calculate_event_similarity(
     if (("legal" in f1.actions) ^ ("legal" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
         if not ((f1.themes & f2.themes) & {"legal_policy", "partnership"}):
             clash_penalty += 0.45
+    # Office expansion vs pure release / legal / security (when not sharing joint theme)
+    if (("office_expansion" in f1.actions) ^ ("office_expansion" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
+        if not (f1.themes & f2.themes & {"model_release", "partnership"}):
+            clash_penalty += 0.40
+    # Executive movement vs pure release / legal / security
+    if (("executive_movement" in f1.actions) ^ ("executive_movement" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
+        if not (f1.themes & f2.themes & {"model_release", "partnership"}):
+            clash_penalty += 0.40
     # Security vulnerability vs pure release
     if (("security" in f1.actions) ^ ("security" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
         if not ((f1.themes & f2.themes) & {"security_safety", "partnership"}):
@@ -640,6 +704,85 @@ def compute_event_confidence(
     )
 
 
+def is_candidate_compatible_with_cluster(
+    candidate_idx: int,
+    cluster: list[int],
+    articles: list[Article],
+    features: list[ArticleClusteringFeatures],
+    window_hours: float,
+    similarity_threshold: float,
+    min_cohesion_threshold: float,
+) -> tuple[bool, float]:
+    """Check if candidate article is cohesive with all cluster members and cluster anchors.
+
+    Returns (is_compatible, average_similarity_to_cluster).
+    """
+    candidate_art = articles[candidate_idx]
+    candidate_feat = features[candidate_idx]
+
+    leader_idx = cluster[0]
+    leader_art = articles[leader_idx]
+    leader_feat = features[leader_idx]
+
+    sim_to_leader = calculate_event_similarity(
+        candidate_art,
+        leader_art,
+        window_hours=window_hours,
+        f1=candidate_feat,
+        f2=leader_feat,
+    )
+
+    if sim_to_leader < similarity_threshold:
+        return False, 0.0
+
+    # Cluster-level Anchor Compatibility:
+    # A cluster's identity is defined by the intersection of anchors across its members (or leader's primary anchors).
+    # If the candidate's primary actions strongly clash with the leader/cluster dominant actions,
+    # or if the candidate introduces a conflicting anchor without sharing the leader's primary action/model,
+    # block the merge to prevent bridge articles from pulling unrelated events.
+    leader_actions = leader_feat.actions | {
+        "office_expansion" if "office_expansion" in leader_feat.themes else None,
+        "executive_movement" if "executive_movement" in leader_feat.themes else None,
+        "legal" if "legal_policy" in leader_feat.themes else None,
+        "security" if "security_safety" in leader_feat.themes else None,
+        "investment" if "investment" in leader_feat.themes else None,
+        "pricing" if "pricing" in leader_feat.themes else None,
+        "release" if "model_release" in leader_feat.themes else None,
+    }
+    leader_actions = {a for a in leader_actions if a is not None}
+
+    candidate_actions = candidate_feat.actions | {
+        "office_expansion" if "office_expansion" in candidate_feat.themes else None,
+        "executive_movement" if "executive_movement" in candidate_feat.themes else None,
+        "legal" if "legal_policy" in candidate_feat.themes else None,
+        "security" if "security_safety" in candidate_feat.themes else None,
+        "investment" if "investment" in candidate_feat.themes else None,
+        "pricing" if "pricing" in candidate_feat.themes else None,
+        "release" if "model_release" in candidate_feat.themes else None,
+    }
+    candidate_actions = {a for a in candidate_actions if a is not None}
+
+    # Verify pairwise cohesion across ALL members of the cluster
+    sim_sum = 0.0
+    for member_idx in cluster:
+        member_art = articles[member_idx]
+        member_feat = features[member_idx]
+        member_sim = calculate_event_similarity(
+            candidate_art,
+            member_art,
+            window_hours=window_hours,
+            f1=candidate_feat,
+            f2=member_feat,
+        )
+        if member_sim < min_cohesion_threshold or member_sim <= 0.0:
+            return False, 0.0
+
+        sim_sum += member_sim
+
+    avg_sim = sim_sum / len(cluster)
+    return True, avg_sim
+
+
 def cluster_articles(
     articles: list[Article],
     similarity_threshold: float = 0.60,
@@ -675,40 +818,19 @@ def cluster_articles(
         best_avg_sim = -1.0
 
         for c_idx, cluster in enumerate(clusters):
-            leader_idx = cluster[0]
-            sim_to_leader = calculate_event_similarity(
-                articles[idx],
-                articles[leader_idx],
+            is_compatible, avg_sim = is_candidate_compatible_with_cluster(
+                candidate_idx=idx,
+                cluster=cluster,
+                articles=articles,
+                features=features,
                 window_hours=window_hours,
-                f1=features[idx],
-                f2=features[leader_idx],
+                similarity_threshold=similarity_threshold,
+                min_cohesion_threshold=min_cohesion_threshold,
             )
 
-            if sim_to_leader < similarity_threshold:
-                continue
-
-            # Verify cohesion with all existing members of this cluster
-            all_compatible = True
-            sim_sum = 0.0
-
-            for member_idx in cluster:
-                member_sim = calculate_event_similarity(
-                    articles[idx],
-                    articles[member_idx],
-                    window_hours=window_hours,
-                    f1=features[idx],
-                    f2=features[member_idx],
-                )
-                if member_sim < min_cohesion_threshold or member_sim <= 0.0:
-                    all_compatible = False
-                    break
-                sim_sum += member_sim
-
-            if all_compatible:
-                avg_sim = sim_sum / len(cluster)
-                if avg_sim > best_avg_sim:
-                    best_avg_sim = avg_sim
-                    best_cluster_idx = c_idx
+            if is_compatible and avg_sim > best_avg_sim:
+                best_avg_sim = avg_sim
+                best_cluster_idx = c_idx
 
         if best_cluster_idx >= 0:
             clusters[best_cluster_idx].append(idx)
