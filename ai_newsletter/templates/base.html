@@ -11,18 +11,25 @@
     <meta property="og:type" content="website">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', path='styles.css').path }}?v=20260917-ai">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <link rel="stylesheet" href="{{ url_for('static', path='styles.css').path }}?v=20260918-nightmode">
     <!-- Google AdSense -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6854824605420161" crossorigin="anonymous"></script>
     <script>
+      // Load saved language and theme preferences immediately to avoid FOUC
       const savedLang = localStorage.getItem("preferred_lang");
       if (savedLang === "en") {
         document.documentElement.classList.add("lang-en-active");
       }
+      const savedTheme = localStorage.getItem("theme");
+      const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (savedTheme === "dark" || (!savedTheme && prefersDark)) {
+        document.documentElement.classList.add("dark-mode");
+      }
     </script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
-    <script defer src="{{ url_for('static', path='app.js').path }}?v=20260917-ai"></script>
+    <script defer src="{{ url_for('static', path='app.js').path }}?v=20260918-nightmode"></script>
   </head>
   <body class="google-anno-skip">
     {% block body %}{% endblock %}
