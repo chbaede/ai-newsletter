@@ -224,14 +224,10 @@
                       <span class="lang-en" style="display:none;">{{ view.priority.label_en }}</span>
                       <span class="score-num">{{ view.priority.score }}</span>
                     </span>
-                    <span class="publisher-name">{{ view.publisher_display }}</span>
-                    {% if view.coverage and view.coverage.source_count > 1 %}
-                      <span class="coverage-pill" title="{{ view.coverage.related_sources|join(', ') }}">
-                        <i data-lucide="layers" style="width:11px;height:11px;"></i>
-                        <span class="lang-ko">{{ view.coverage.label_ko }}</span>
-                        <span class="lang-en" style="display:none;">{{ view.coverage.label_en }}</span>
-                      </span>
-                    {% endif %}
+                    <span class="evidence-badge {{ view.transparency.evidence_badge.css_class }}">
+                      <span class="lang-ko">{{ view.transparency.evidence_badge.label_ko }}</span>
+                      <span class="lang-en" style="display:none;">{{ view.transparency.evidence_badge.label_en }}</span>
+                    </span>
                     <span class="pub-time">{{ view.published_time }}</span>
                   </div>
 
@@ -241,6 +237,36 @@
                       <span class="lang-en" style="display:none;">{{ view.title_en }}</span>
                     </a>
                   </h4>
+
+                  <div class="source-transparency-row">
+                    <div class="transparency-item">
+                      <span class="transparency-label">
+                        <span class="lang-ko">{% if view.transparency.is_multi_source %}출처목록{% else %}출처{% endif %}:</span>
+                        <span class="lang-en" style="display:none;">{% if view.transparency.is_multi_source %}Sources{% else %}Source{% endif %}:</span>
+                      </span>
+                      <span class="transparency-val source-val">{{ view.transparency.sources_display }}</span>
+                    </div>
+                    <div class="transparency-item">
+                      <span class="transparency-label">
+                        <span class="lang-ko">증거:</span>
+                        <span class="lang-en" style="display:none;">Evidence:</span>
+                      </span>
+                      <span class="transparency-val">
+                        <span class="lang-ko">{{ view.transparency.evidence_label_ko }}</span>
+                        <span class="lang-en" style="display:none;">{{ view.transparency.evidence_label_en }}</span>
+                      </span>
+                    </div>
+                    <div class="transparency-item">
+                      <span class="transparency-label">
+                        <span class="lang-ko">신뢰도:</span>
+                        <span class="lang-en" style="display:none;">Confidence:</span>
+                      </span>
+                      <span class="confidence-tag conf-{{ view.transparency.confidence_label|lower }}" title="{% if view.transparency.confidence_explanation_ko %}{{ view.transparency.confidence_explanation_ko }}{% else %}{{ view.transparency.confidence_explanation_en }}{% endif %}">
+                        <span class="lang-ko">{{ view.transparency.confidence_label_ko }}</span>
+                        <span class="lang-en" style="display:none;">{{ view.transparency.confidence_label }}</span>
+                      </span>
+                    </div>
+                  </div>
 
                   <div class="article-summary">
                     <p class="lang-ko">{{ view.factual_summary_ko }}</p>
@@ -264,6 +290,36 @@
                         <li>{{ pt }}</li>
                       {% endfor %}
                     </ul>
+                  {% endif %}
+
+                  {% if view.transparency.is_multi_source and (view.transparency.primary_sources or view.transparency.independent_sources) %}
+                    <details class="evidence-expansion">
+                      <summary>
+                        <span class="lang-ko">세부 출처 정보 보기</span>
+                        <span class="lang-en" style="display:none;">View source breakdown</span>
+                        <i data-lucide="chevron-down" style="width:12px;height:12px;"></i>
+                      </summary>
+                      <div class="evidence-expansion-content">
+                        {% if view.transparency.primary_sources %}
+                          <div class="exp-row">
+                            <strong><span class="lang-ko">1차 공식 출처</span><span class="lang-en" style="display:none;">Primary Source</span>:</strong>
+                            <span>{{ view.transparency.primary_sources|join(', ') }}</span>
+                          </div>
+                        {% endif %}
+                        {% if view.transparency.independent_sources %}
+                          <div class="exp-row">
+                            <strong><span class="lang-ko">독립 취재 언론</span><span class="lang-en" style="display:none;">Independent Media</span>:</strong>
+                            <span>{{ view.transparency.independent_sources|join(', ') }}</span>
+                          </div>
+                        {% endif %}
+                        {% if view.transparency.other_sources %}
+                          <div class="exp-row">
+                            <strong><span class="lang-ko">기타 보도</span><span class="lang-en" style="display:none;">Other Media</span>:</strong>
+                            <span>{{ view.transparency.other_sources|join(', ') }}</span>
+                          </div>
+                        {% endif %}
+                      </div>
+                    </details>
                   {% endif %}
 
                   <div class="card-footer">

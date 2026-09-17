@@ -174,6 +174,41 @@ INTELLIGENCE_SECTION_DEFINITIONS = [
 
 
 @dataclass(frozen=True, slots=True)
+class SourceBadge:
+    key: str
+    label_en: str
+    label_ko: str
+    css_class: str
+
+
+EVIDENCE_BADGES = {
+    "primary": SourceBadge("primary", "Primary", "1차 출처", "badge-primary"),
+    "research": SourceBadge("research", "Research", "연구", "badge-research"),
+    "independent": SourceBadge("independent", "Independent", "독립 취재", "badge-independent"),
+    "industry_media": SourceBadge("industry_media", "Industry Media", "산업 미디어", "badge-industry-media"),
+    "community": SourceBadge("community", "Community", "커뮤니티", "badge-community"),
+    "discovery": SourceBadge("discovery", "Discovery", "검색 집계", "badge-discovery"),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class SourceTransparency:
+    evidence_badge: SourceBadge
+    sources_display: str
+    evidence_label_en: str
+    evidence_label_ko: str
+    confidence_label: str
+    confidence_label_ko: str
+    confidence_explanation_en: str
+    confidence_explanation_ko: str
+    is_multi_source: bool
+    independent_source_count: int
+    primary_sources: list[str]
+    independent_sources: list[str]
+    other_sources: list[str]
+
+
+@dataclass(frozen=True, slots=True)
 class ArticleView:
     article: Article
     priority: Any
@@ -195,6 +230,7 @@ class ArticleView:
     coverage: Any
     user_tags: list[str]
     publisher_display: str
+    transparency: SourceTransparency
 
 
 def regions_for_article(article: Article) -> list[RegionSignal]:
@@ -347,6 +383,89 @@ def display_event_coverage(article: Article) -> dict[str, Any]:
     }
 
 
+def display_source_transparency(article: Article) -> SourceTransparency:
+    ev_level = article.evidence_level or "industry_media"
+    badge = EVIDENCE_BADGES.get(ev_level, EVIDENCE_BADGES["industry_media"])
+
+    # Collect source list
+    related = list(article.event_related_sources or [])
+    if not related:
+        primary_pub = article.publisher or article.source or "Unknown Source"
+        related = [primary_pub]
+
+    is_multi = len(related) > 1
+    sources_display = " · ".join(related[:4]) + (f" (+{len(related)-4})" if len(related) > 4 else "")
+
+    # Evidence label
+    status = article.event_verification_status or "insufficient_evidence"
+    if status == "multi_source":
+        ev_label_en = "Multi-source independent reporting"
+        ev_label_ko = "다수 독립 언론 교차 취재"
+    elif status == "independently_reported":
+        ev_label_en = "Primary + independent reporting"
+        ev_label_ko = "1차 출처 + 독립 언론 취재"
+    elif status == "primary_only":
+        if article.is_primary_source or article.source_type == "official":
+            ev_label_en = "Primary announcement"
+            ev_label_ko = "1차 공식 발표"
+        elif ev_level == "research":
+            ev_label_en = "Research publication"
+            ev_label_ko = "연구기관 발표 기반"
+        else:
+            ev_label_en = "Direct source announcement"
+            ev_label_ko = "직접 출처 발표"
+    elif status == "discovery_only":
+        ev_label_en = "Aggregator discovery"
+        ev_label_ko = "검색 집계 발견"
+    else:
+        if ev_level == "primary":
+            ev_label_en = "Primary source"
+            ev_label_ko = "1차 출처"
+        elif ev_level == "research":
+            ev_label_en = "Research publication"
+            ev_label_ko = "연구기관 발표"
+        elif ev_level == "independent":
+            ev_label_en = "Independent reporting"
+            ev_label_ko = "독립 취재 보도"
+        elif ev_level == "industry_media":
+            ev_label_en = "Industry media"
+            ev_label_ko = "산업 전문 미디어"
+        elif ev_level == "community":
+            ev_label_en = "Community discussion"
+            ev_label_ko = "커뮤니티 논의"
+        else:
+            ev_label_en = "Aggregator / Discovery"
+            ev_label_ko = "검색 집계 / 발견"
+
+    conf_label = article.event_confidence_label or "Medium"
+    if conf_label == "High":
+        conf_label_ko = "높음"
+    elif conf_label == "Medium":
+        conf_label_ko = "보통"
+    else:
+        conf_label_ko = "낮음"
+
+    primary_sources = list(article.event_primary_sources or [])
+    ind_sources = list(article.event_independent_sources or [])
+    other_sources = [s for s in related if s.lower() not in [p.lower() for p in primary_sources + ind_sources]]
+
+    return SourceTransparency(
+        evidence_badge=badge,
+        sources_display=sources_display,
+        evidence_label_en=ev_label_en,
+        evidence_label_ko=ev_label_ko,
+        confidence_label=conf_label,
+        confidence_label_ko=conf_label_ko,
+        confidence_explanation_en=article.event_confidence_explanation_en or "",
+        confidence_explanation_ko=article.event_confidence_explanation_ko or "",
+        is_multi_source=is_multi,
+        independent_source_count=article.event_independent_source_count or (1 if article.is_independent_source else 0),
+        primary_sources=primary_sources,
+        independent_sources=ind_sources,
+        other_sources=other_sources,
+    )
+
+
 def prepare_article_view(article: Article) -> ArticleView:
     return ArticleView(
         article=article,
@@ -369,6 +488,7 @@ def prepare_article_view(article: Article) -> ArticleView:
         coverage=display_event_coverage(article),
         user_tags=visible_tags(article),
         publisher_display=article.publisher or article.source or "Unknown Source",
+        transparency=display_source_transparency(article),
     )
 
 

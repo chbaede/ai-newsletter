@@ -112,6 +112,15 @@ class Article:
     event_official_source_name: str | None = None
     event_reference_source_name: str | None = None
     event_related_sources: list[str] = field(default_factory=list)
+    event_evidence_sources: list[str] = field(default_factory=list)
+    event_primary_sources: list[str] = field(default_factory=list)
+    event_independent_sources: list[str] = field(default_factory=list)
+    event_evidence_diversity: int = 0
+    event_verification_status: str = "insufficient_evidence"
+    event_confidence_score: float = 0.0
+    event_confidence_label: str = "Low"
+    event_confidence_explanation_ko: str = ""
+    event_confidence_explanation_en: str = ""
 
     # Flags
     is_official: bool = False

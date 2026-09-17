@@ -665,6 +665,15 @@ def cluster_articles(
             a.event_official_source_url = official_url
             a.event_official_source_name = official_name
             a.event_related_sources = sorted(publishers)
+            a.event_evidence_sources = ev_evidence.evidence_sources
+            a.event_primary_sources = ev_evidence.primary_sources
+            a.event_independent_sources = ev_evidence.independent_sources
+            a.event_evidence_diversity = ev_evidence.evidence_diversity
+            a.event_verification_status = ev_evidence.verification_status
+            a.event_confidence_score = ev_confidence.confidence_score
+            a.event_confidence_label = ev_confidence.confidence_label
+            a.event_confidence_explanation_ko = ev_confidence.explanation_ko
+            a.event_confidence_explanation_en = ev_confidence.explanation_en
             updated_articles.append(a)
 
     return events, event_articles, updated_articles
