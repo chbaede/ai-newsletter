@@ -233,6 +233,7 @@ class ArticleView:
     user_tags: list[str]
     publisher_display: str
     transparency: SourceTransparency
+    key_points: list[str]
 
 
 def regions_for_article(article: Article) -> list[RegionSignal]:
@@ -372,7 +373,20 @@ def display_url(article: Article) -> str:
 
 
 def display_key_points(article: Article) -> list[str]:
-    return article.key_points or []
+    points = article.key_points or []
+    cleaned: list[str] = []
+    seen = set()
+    for pt in points:
+        p_str = str(pt).strip()
+        if not p_str:
+            continue
+        # Filter out redundant '발행처' or duplicated source points
+        if p_str.startswith("발행처:") or p_str.startswith("발행처 :") or p_str.startswith("출처:"):
+            continue
+        if p_str not in seen:
+            seen.add(p_str)
+            cleaned.append(p_str)
+    return cleaned
 
 
 def visible_tags(article: Article) -> list[str]:
@@ -500,7 +514,9 @@ def prepare_article_view(article: Article) -> ArticleView:
         user_tags=visible_tags(article),
         publisher_display=article.publisher or article.source or "Unknown Source",
         transparency=display_source_transparency(article),
+        key_points=display_key_points(article),
     )
+
 
 
 def build_intelligence_sections(issue: NewsletterIssue, lang: str = "ko") -> list[dict[str, Any]]:

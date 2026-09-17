@@ -78,9 +78,9 @@ class TemplateSummarizer(BaseSummarizer):
             key_points.append(f"주요 기업/모델 (Entities): {', '.join(entities[:4])}")
         
         if topics:
-            key_points.append(f"핵심 토픽 (Topics): {', '.join(topics[:4])}")
+            key_points.append(f"핵심 분야 (Topics): {', '.join(topics[:4])}")
         else:
-            key_points.append(f"주요 분야: {cat_ko} ({cat_en})")
+            key_points.append(f"핵심 분야 (Topics): {cat_ko} ({cat_en})")
 
         return SummaryResult(
             title_ko=title_ko,

@@ -646,11 +646,13 @@ html.dark-mode .filter-pill.active {
   font-weight: 600;
 }
 
-/* ── Article Grid ────────────────────────────────────────────────────────── */
+/* ── Article Grid & Multi-Column Layout ──────────────────────────────────── */
+.card-grid,
 .article-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+  align-items: stretch;
 }
 
 /* ── Article Card: Elevated, Crisp & Readable ────────────────────────────── */
@@ -1489,19 +1491,27 @@ body.admin-mode .header-actions [data-admin-only] { display: flex !important; }
     height: auto;
     border-right: none;
     border-bottom: 1px solid var(--line);
+    padding: 16px 14px;
   }
 
   .issue-workspace {
-    padding: 20px 18px 48px;
+    padding: 16px 14px 48px;
   }
 
   .issue-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 14px;
   }
 
   .metric-grid {
     grid-template-columns: 1fr;
+  }
+
+  .card-grid,
+  .article-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
 
   .settings-form {
@@ -1509,12 +1519,64 @@ body.admin-mode .header-actions [data-admin-only] { display: flex !important; }
   }
 }
 
-@media (max-width: 520px) {
-  .article-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 540px) {
+  .issue-workspace {
+    padding: 12px 10px 40px;
   }
 
   .issue-header h2 {
-    font-size: 23px;
+    font-size: 21px;
+    line-height: 1.3;
+  }
+
+  .article-card {
+    padding: 16px 14px;
+    gap: 11px;
+    border-radius: var(--radius-md);
+  }
+
+  .article-card h4,
+  .article-title {
+    font-size: 17px;
+    line-height: 1.4;
+  }
+
+  .factual-summary,
+  .article-summary p,
+  .article-card p {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .source-transparency-row {
+    padding: 7px 10px;
+    gap: 8px 12px;
+    font-size: 11.5px;
+  }
+
+  .why-it-matters {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .key-points-list {
+    padding: 8px 12px 8px 22px;
+    font-size: 12.5px;
+  }
+
+  .key-points-list li {
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+
+  .filter-controls {
+    padding: 12px 10px;
+  }
+
+  .filter-pill {
+    font-size: 11.5px;
+    height: 27px;
+    padding: 0 8px;
   }
 }
+
