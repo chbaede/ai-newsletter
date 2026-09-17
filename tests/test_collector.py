@@ -238,3 +238,199 @@ def test_all_feeds_failing_does_not_crash(monkeypatch):
         assert len(issue.warnings) == 2
 
 
+# ── Regression Tests: Cross-Publisher Preservation & Identity Deduplication ───
+
+def test_same_publisher_duplicate_suppression():
+    """Test 1: Same publisher duplicate (e.g. Reuters article and identical/similar duplicate) -> only 1 survives."""
+    entries = [
+        FeedEntry(
+            title="OpenAI launches GPT-5 flagship model with autonomous capabilities",
+            url="https://reuters.com/technology/openai-gpt-5-launch",
+            source="Reuters",
+            publisher="Reuters",
+            bucket="frontier_models",
+            evidence_level="independent",
+            is_independent_source=True,
+        ),
+        FeedEntry(
+            title="OpenAI launches GPT-5 flagship model with autonomous features",
+            url="https://reuters.com/technology/openai-gpt-5-launch?ref=rss",
+            source="Reuters Technology",
+            publisher="Reuters Technology",
+            bucket="frontier_models",
+            evidence_level="independent",
+            is_independent_source=True,
+        ),
+    ]
+    articles, _, suppressed = collect_from_entries(entries)
+    assert len(articles) == 1
+    assert suppressed == 1
+
+
+def test_cross_publisher_same_event_preservation():
+    """Test 2: Different publisher same event (OpenAI + Reuters near identical title) -> both survive and cluster together."""
+    from ai_newsletter.clustering import cluster_articles
+
+    entries = [
+        FeedEntry(
+            title="OpenAI announces GPT-5 with frontier capabilities",
+            url="https://openai.com/blog/gpt-5",
+            source="OpenAI Blog",
+            publisher="OpenAI",
+            bucket="frontier_models",
+            evidence_level="primary",
+            source_type="official",
+            is_primary_source=True,
+        ),
+        FeedEntry(
+            title="OpenAI announces GPT-5 with frontier capabilities",
+            url="https://reuters.com/technology/openai-gpt5",
+            source="Reuters",
+            publisher="Reuters",
+            bucket="frontier_models",
+            evidence_level="independent",
+            is_independent_source=True,
+        ),
+    ]
+    articles, _, suppressed = collect_from_entries(entries)
+    assert len(articles) == 2, f"Both publishers must survive collection! Suppressed: {suppressed}"
+    assert suppressed == 0
+
+    events, _, _ = cluster_articles(articles)
+    assert len(events) == 1, "Articles from different publishers about the same event must cluster into 1 event"
+    ev = events[0]
+    assert "openai" in ev.evidence_sources
+    assert "reuters" in ev.evidence_sources
+    assert "openai" in ev.primary_sources
+    assert "reuters" in ev.independent_sources
+    assert ev.verification_status == "independently_reported"
+
+
+def test_three_source_event_evidence_diversity():
+    """Test 3: Three-source event (OpenAI + Reuters + TechCrunch) -> all survive, cluster into 1 event, correct evidence breakdown."""
+    from ai_newsletter.clustering import cluster_articles
+
+    entries = [
+        FeedEntry(
+            title="OpenAI launches GPT-5 AI model",
+            url="https://openai.com/news/gpt-5",
+            source="OpenAI News",
+            publisher="OpenAI",
+            bucket="frontier_models",
+            evidence_level="primary",
+            source_type="official",
+            is_primary_source=True,
+        ),
+        FeedEntry(
+            title="OpenAI launches GPT-5 AI model",
+            url="https://reuters.com/business/openai-gpt5",
+            source="Reuters",
+            publisher="Reuters",
+            bucket="frontier_models",
+            evidence_level="independent",
+            is_independent_source=True,
+        ),
+        FeedEntry(
+            title="OpenAI launches GPT-5 AI model",
+            url="https://techcrunch.com/openai-gpt5",
+            source="TechCrunch",
+            publisher="TechCrunch",
+            bucket="frontier_models",
+            evidence_level="industry_media",
+        ),
+    ]
+    articles, _, suppressed = collect_from_entries(entries)
+    assert len(articles) == 3
+    assert suppressed == 0
+
+    events, _, _ = cluster_articles(articles)
+    assert len(events) == 1
+    ev = events[0]
+    assert set(ev.evidence_sources) == {"openai", "reuters", "techcrunch"}
+    assert ev.primary_sources == ["openai"]
+    assert ev.independent_sources == ["reuters"]
+    assert ev.source_count == 3
+    assert ev.independent_source_count == 3
+    assert ev.verification_status == "independently_reported"
+
+
+def test_same_publisher_multiple_articles_cluster():
+    """Test 4: Same publisher multiple articles (Reuters piece A + follow-up B) -> cluster into 1 event, counts as 1 independent publisher."""
+    from ai_newsletter.clustering import cluster_articles
+
+    entries = [
+        FeedEntry(
+            title="OpenAI launches GPT-5 frontier model",
+            url="https://reuters.com/technology/openai-gpt5-launch",
+            source="Reuters Technology",
+            publisher="Reuters Technology",
+            bucket="frontier_models",
+            evidence_level="independent",
+            is_independent_source=True,
+        ),
+        FeedEntry(
+            title="OpenAI GPT-5 launch sparks regulatory scrutiny in EU",
+            url="https://reuters.com/technology/openai-gpt5-eu-scrutiny",
+            source="Reuters News",
+            publisher="Reuters News",
+            bucket="frontier_models",
+            evidence_level="independent",
+            is_independent_source=True,
+        ),
+    ]
+    articles, _, suppressed = collect_from_entries(entries)
+    assert len(articles) == 2
+    assert suppressed == 0
+
+    events, _, _ = cluster_articles(articles)
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.independent_sources == ["reuters"]
+    assert len(ev.independent_sources) == 1
+
+
+def test_unrelated_articles_same_or_similar_generic_title_guard():
+    """Test 5: Unrelated articles with different entities (e.g. OpenAI vs Google vs Anthropic releases) -> do NOT merge into one event."""
+    from ai_newsletter.clustering import cluster_articles
+
+    entries = [
+        FeedEntry(
+            title="OpenAI launches GPT-5 flagship model",
+            url="https://openai.com/blog/gpt-5",
+            source="OpenAI",
+            publisher="OpenAI",
+            bucket="frontier_models",
+            evidence_level="primary",
+            source_type="official",
+            is_primary_source=True,
+        ),
+        FeedEntry(
+            title="Google DeepMind announces Gemini 2.0 Flash",
+            url="https://deepmind.google/gemini-2",
+            source="Google DeepMind",
+            publisher="Google DeepMind",
+            bucket="frontier_models",
+            evidence_level="primary",
+            source_type="official",
+            is_primary_source=True,
+        ),
+        FeedEntry(
+            title="Anthropic introduces Claude 3.5 Sonnet upgrade",
+            url="https://anthropic.com/claude-3-5",
+            source="Anthropic",
+            publisher="Anthropic",
+            bucket="frontier_models",
+            evidence_level="primary",
+            source_type="official",
+            is_primary_source=True,
+        ),
+    ]
+    articles, _, suppressed = collect_from_entries(entries)
+    assert len(articles) == 3
+    assert suppressed == 0
+
+    events, _, _ = cluster_articles(articles)
+    assert len(events) == 3, f"Distinct entity announcements must produce 3 distinct events, got {len(events)}"
+
+
+

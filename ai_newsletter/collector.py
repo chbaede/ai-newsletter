@@ -14,7 +14,7 @@ from urllib.parse import parse_qsl, urlsplit, urlunsplit
 import feedparser
 import httpx
 
-from .clustering import STOP_WORDS, cluster_articles, select_primary_article
+from .clustering import STOP_WORDS, _normalize_publisher, cluster_articles, select_primary_article
 from .config import Settings, load_settings
 from .content_extractor import extract_usable_article_text
 from .logging import logger
@@ -268,41 +268,57 @@ def collect_from_entries(
 ) -> tuple[list[Article], list[str], int]:
     articles: list[Article] = []
     seen_urls: set[str] = set()
-    seen_titles: set[str] = set()
-    title_index: dict[str, list[str]] = {}
+    # Scoped to canonical publisher: (canonical_publisher, normalized_title)
+    seen_pub_titles: set[tuple[str, str]] = set()
+    # Scoped to canonical publisher: canonical_publisher -> token -> list[title]
+    pub_title_index: dict[str, dict[str, list[str]]] = {}
     suppressed_count = 0
 
     if recent_articles:
         for past in recent_articles:
             p_url = past.canonical_url or canonicalize_url(past.url)
             p_norm = normalize_title(past.title)
+            p_pub = _normalize_publisher((past.publisher or past.source or "unknown").strip())
             if p_url:
                 seen_urls.add(p_url)
-            if p_norm:
-                seen_titles.add(p_norm)
-            for tok in extract_title_tokens(past.title):
-                title_index.setdefault(tok, []).append(past.title)
+            if p_norm and p_pub:
+                seen_pub_titles.add((p_pub, p_norm))
+            if p_pub:
+                p_idx = pub_title_index.setdefault(p_pub, {})
+                for tok in extract_title_tokens(past.title):
+                    p_idx.setdefault(tok, []).append(past.title)
 
     for entry in entries:
         canonical_url = canonicalize_url(entry.url)
         title_key = normalize_title(entry.title)
         if not canonical_url or not title_key:
             continue
-        if canonical_url in seen_urls or title_key in seen_titles:
+
+        canonical_pub = _normalize_publisher((entry.publisher or entry.source or "unknown").strip())
+
+        # Exact canonical URL duplicate across any source is suppressed (Identity deduplication)
+        if canonical_url in seen_urls:
             suppressed_count += 1
             continue
 
+        # Exact same normalized title from the SAME publisher is suppressed
+        if (canonical_pub, title_key) in seen_pub_titles:
+            suppressed_count += 1
+            continue
+
+        # Similar title from the SAME publisher is suppressed
         tokens = extract_title_tokens(entry.title)
+        p_idx = pub_title_index.setdefault(canonical_pub, {})
         if tokens:
-            candidates = {cand for tok in tokens for cand in title_index.get(tok, [])}
+            candidates = {cand for tok in tokens for cand in p_idx.get(tok, [])}
             if any(are_titles_similar(cand, entry.title) for cand in candidates):
                 suppressed_count += 1
                 continue
 
         seen_urls.add(canonical_url)
-        seen_titles.add(title_key)
+        seen_pub_titles.add((canonical_pub, title_key))
         for tok in tokens:
-            title_index.setdefault(tok, []).append(entry.title)
+            p_idx.setdefault(tok, []).append(entry.title)
 
         # Build initial article
         raw_article = Article(
