@@ -502,3 +502,140 @@ def test_total_feed_count():
         f"Expected 39 feeds in SOURCE_CATALOG, got {len(SOURCE_CATALOG)}"
     )
 
+
+# ── Tests for Evidence Origin vs. Discovery Mechanism Separation ──────────────
+
+from ai_newsletter.collector import parse_feed_entry
+from ai_newsletter.models import Article
+from ai_newsletter.sources import SourceFeed
+
+
+def test_scenario_1_direct_openai_feed():
+    """1. Direct OpenAI RSS feed: publisher=OpenAI, evidence_level=primary, discovery_method=rss."""
+    openai_feed = get_source("openai_news")
+    assert openai_feed is not None
+    assert openai_feed.discovery_method == "rss"
+    assert openai_feed.evidence_level == "primary"
+    assert openai_feed.is_primary_source is True
+    assert openai_feed.is_discovery_source is False
+
+    mock_entry = {
+        "title": "OpenAI announces GPT-5 frontier model",
+        "link": "https://openai.com/news/gpt-5",
+        "published": "Thu, 17 Sep 2026 10:00:00 GMT",
+        "summary": "Official announcement of GPT-5.",
+    }
+    parsed = parse_feed_entry(mock_entry, openai_feed)
+    assert parsed is not None
+    assert parsed.publisher == "OpenAI Newsroom"
+    assert parsed.evidence_level == "primary"
+    assert parsed.is_primary_source is True
+    assert parsed.is_discovery_source is False
+    assert parsed.discovered_via == "openai_news"
+
+
+def test_scenario_2_primary_discovered_via_google_news():
+    """2. Primary publisher (Anthropic/OpenAI) discovered via Google News:
+    publisher=Anthropic, evidence_level=primary, discovery_method=search/google_news,
+    is_primary_source=True, is_discovery_source=False.
+    """
+    anthropic_feed = get_source("anthropic_news")
+    assert anthropic_feed is not None
+    assert anthropic_feed.discovery_method == "search"
+    assert anthropic_feed.evidence_level == "primary"
+    assert anthropic_feed.is_primary_source is True
+    assert anthropic_feed.is_discovery_source is False
+
+    mock_entry = {
+        "title": "Anthropic introduces Claude 3.5 Sonnet upgrade - Anthropic",
+        "link": "https://news.google.com/rss/articles/anthropic-claude",
+        "published": "Thu, 17 Sep 2026 10:00:00 GMT",
+        "summary": "Anthropic releases Claude 3.5 Sonnet update.",
+        "source": {"title": "Anthropic"},
+    }
+    parsed = parse_feed_entry(mock_entry, anthropic_feed)
+    assert parsed is not None
+    assert parsed.publisher == "Anthropic"
+    assert parsed.evidence_level == "primary"
+    assert parsed.is_primary_source is True
+    assert parsed.is_discovery_source is False
+    assert parsed.discovered_via == "anthropic_news"
+
+
+def test_scenario_3_independent_media_discovered_via_google_news():
+    """3. Independent media (Reuters) discovered via Google News:
+    publisher=Reuters, evidence_level=independent, discovery_method=search,
+    is_independent_source=True, is_discovery_source=False.
+    """
+    reuters_feed = get_source("reuters_ai")
+    assert reuters_feed is not None
+    assert reuters_feed.discovery_method == "search"
+    assert reuters_feed.evidence_level == "independent"
+    assert reuters_feed.is_independent_source is True
+    assert reuters_feed.is_discovery_source is False
+
+    mock_entry = {
+        "title": "OpenAI in talks for new funding round - Reuters",
+        "link": "https://news.google.com/rss/articles/reuters-openai-funding",
+        "published": "Thu, 17 Sep 2026 11:00:00 GMT",
+        "summary": "Reuters report on OpenAI funding.",
+        "source": {"title": "Reuters"},
+    }
+    parsed = parse_feed_entry(mock_entry, reuters_feed)
+    assert parsed is not None
+    assert parsed.publisher == "Reuters"
+    assert parsed.evidence_level == "independent"
+    assert parsed.is_independent_source is True
+    assert parsed.is_discovery_source is False
+    assert parsed.discovered_via == "reuters_ai"
+
+
+def test_scenario_4_unknown_publisher_discovered_via_google_news():
+    """4. Unknown publisher discovered via Google News query:
+    publisher extracted from entry, evidence_level defaults to feed/industry_media,
+    is_discovery_source=False (the article origin has a named publisher).
+    """
+    custom_search_feed = SourceFeed(
+        name="AI Trends Monitor",
+        bucket="frontier_models",
+        url="https://news.google.com/rss/search?q=AI+Trends",
+        source_type="media",
+        discovery_method="search",
+        evidence_level="industry_media",
+    )
+    mock_entry = {
+        "title": "Small AI startup announces breakthrough - Silicon Valley Herald",
+        "link": "https://news.google.com/rss/articles/startup-breakthrough",
+        "source": {"title": "Silicon Valley Herald"},
+    }
+    parsed = parse_feed_entry(mock_entry, custom_search_feed)
+    assert parsed is not None
+    assert parsed.publisher == "Silicon Valley Herald"
+    assert parsed.evidence_level == "industry_media"
+    assert parsed.is_primary_source is False
+    assert parsed.is_discovery_source is False
+
+
+def test_scenario_5_actual_google_news_aggregator_article():
+    """5. Actual Google News aggregator article without identifiable publisher:
+    evidence_level=discovery, is_discovery_source=True.
+    """
+    gnews_feed = get_source("gnews_global_ai")
+    assert gnews_feed is not None
+    assert gnews_feed.evidence_level == "discovery"
+    assert gnews_feed.is_discovery_source is True
+    assert gnews_feed.is_primary_source is False
+
+    mock_entry = {
+        "title": "AI Model Index and Overview",
+        "link": "https://news.google.com/topics/ai",
+        "summary": "Aggregated news overview from Google News.",
+    }
+    parsed = parse_feed_entry(mock_entry, gnews_feed)
+    assert parsed is not None
+    assert parsed.publisher == "Google News Global AI"
+    assert parsed.evidence_level == "discovery"
+    assert parsed.is_discovery_source is True
+    assert parsed.is_primary_source is False
+
+
