@@ -72,3 +72,16 @@ def test_mail_settings_api(client):
     assert res2.status_code == 200
     assert "settings" in res2.json()
 
+
+def test_default_port_and_env_override(monkeypatch):
+    from ai_newsletter.config import load_settings
+    monkeypatch.delenv("PORT", raising=False)
+    monkeypatch.delenv("WEB_PORT", raising=False)
+    s = load_settings()
+    assert s.port == 8001
+
+    monkeypatch.setenv("PORT", "8888")
+    s2 = load_settings()
+    assert s2.port == 8888
+
+

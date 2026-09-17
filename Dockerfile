@@ -5,6 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     TZ=Asia/Seoul \
     NEWSLETTER_TIMEZONE=Asia/Seoul \
+    PORT=8001 \
     FORWARDED_ALLOW_IPS=127.0.0.1,::1
 
 WORKDIR /app
@@ -27,10 +28,10 @@ RUN mkdir -p /app/data \
 
 USER appuser
 
-EXPOSE 8000
+EXPOSE 8001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"
+    CMD python -c "import os, urllib.request; port = os.getenv('PORT', '8001'); urllib.request.urlopen(f'http://127.0.0.1:{port}/api/health')"
 
-CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --workers 1 --timeout 120 --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-127.0.0.1,::1}\" 'ai_newsletter.web:create_app()'"]
+CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8001} --workers 1 --timeout 120 --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-127.0.0.1,::1}\" 'ai_newsletter.web:create_app()'"]
 

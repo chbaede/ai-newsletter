@@ -21,7 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     # serve
     serve_parser = subparsers.add_parser("serve", help="Run the FastAPI web dashboard")
     serve_parser.add_argument("--host", default="127.0.0.1")
-    serve_parser.add_argument("--port", default=8000, type=int)
+    serve_parser.add_argument("--port", default=None, type=int, help="Port to bind (default: 8001 or $PORT)")
     serve_parser.add_argument("--reload", action="store_true")
 
     # collect
@@ -46,11 +46,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if command == "serve":
         settings = load_settings()
+        port = args.port if args.port is not None else settings.port
         uvicorn.run(
             "ai_newsletter.web:create_app",
             factory=True,
             host=args.host,
-            port=args.port,
+            port=port,
             reload=args.reload,
             proxy_headers=True,
             forwarded_allow_ips=settings.forwarded_allow_ips,

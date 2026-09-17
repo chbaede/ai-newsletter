@@ -22,9 +22,11 @@ PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR="${PROJECT_DIR}/data"
 TIMEZONE="${TZ:-${NEWSLETTER_TIMEZONE:-Asia/Seoul}}"
 COLLECTION_TIME="${DAILY_COLLECTION_TIME:-07:00}"
+PORT="${PORT:-8001}"
+HOST_PORT="${HOST_PORT:-${PORT}}"
 
 echo "=========================================="
-echo " Starting deployment: ${APP_NAME}"
+echo " Starting deployment: ${APP_NAME} on port ${HOST_PORT}"
 echo " Schedule: daily at ${COLLECTION_TIME} (${TIMEZONE})"
 echo "=========================================="
 
@@ -57,11 +59,12 @@ if [ "$(docker ps -aq -f name=^/${APP_NAME}$)" ]; then
 fi
 
 # 6. Run new container
-echo ">>> Starting new container '${APP_NAME}' on 127.0.0.1:8000..."
+echo ">>> Starting new container '${APP_NAME}' on 127.0.0.1:${HOST_PORT} (container port ${PORT})..."
 docker run -d \
   --name "${APP_NAME}" \
-  -p 127.0.0.1:8000:8000 \
+  -p "127.0.0.1:${HOST_PORT}:${PORT}" \
   -v "${DATA_DIR}:/app/data" \
+  -e PORT="${PORT}" \
   -e ENABLE_DAILY_SCHEDULER=true \
   -e DAILY_COLLECTION_TIME="${COLLECTION_TIME}" \
   -e TZ="${TIMEZONE}" \
@@ -77,7 +80,7 @@ sleep 2
 if [ "$(docker ps -q -f name=^/${APP_NAME}$)" ]; then
   echo "=========================================="
   echo " Deployment successful!"
-  echo " App running at: http://127.0.0.1:8000"
+  echo " App running at: http://127.0.0.1:${HOST_PORT}"
   echo " Container status:"
   docker ps -f name=^/${APP_NAME}$
   echo "=========================================="

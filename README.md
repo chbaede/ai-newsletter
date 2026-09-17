@@ -136,6 +136,7 @@ cp .env.example .env
 Key environment variables:
 | Variable | Default | Description |
 |---|---|---|
+| `PORT` | `8001` | Web dashboard HTTP port (avoids conflict with automotive-newsletter on 8000) |
 | `NEWSLETTER_TIMEZONE` | `Asia/Seoul` | Target timezone for daily issues |
 | `DAILY_COLLECTION_TIME`| `07:00` | Automated daily collection schedule (HH:MM) |
 | `DEFAULT_LANGUAGE` | `ko` | Default web UI and email language (`ko` or `en`) |
@@ -160,11 +161,11 @@ ai-newsletter collect --force
 ```
 
 #### Run Web Dashboard
-Start the local FastAPI web dashboard:
+Start the local FastAPI web dashboard (runs on port 8001 by default):
 ```bash
-ai-newsletter serve --port 8000 --reload
+ai-newsletter serve --reload
 ```
-Open [http://localhost:8000](http://localhost:8000) in your browser.
+Open [http://localhost:8001](http://localhost:8001) in your browser.
 
 #### Send Newsletter via Email
 Send the collected issue in Korean or English:
@@ -201,7 +202,7 @@ Output:
 
 ## Docker Deployment (도커 배포)
 
-Build and run using the production Dockerfile:
+Build and run using the production Dockerfile (exposed on port 8001):
 
 ```bash
 # Build Docker image
@@ -209,7 +210,7 @@ docker build -t ai-newsletter:latest .
 
 # Run container
 docker run -d \
-  -p 8000:8000 \
+  -p 8001:8001 \
   -v $(pwd)/data:/app/data \
   --env-file .env \
   --name ai-newsletter \
@@ -227,3 +228,4 @@ chmod +x deploy.sh
 ## License (라이선스)
 
 MIT License. See [LICENSE](LICENSE) for details.
+

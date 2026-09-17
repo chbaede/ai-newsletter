@@ -57,6 +57,7 @@ class Settings:
     enable_daily_scheduler: bool = False
     newsletter_timezone: str = "Asia/Seoul"
     default_language: str = "ko"
+    port: int = 8001
     request_timeout_seconds: float = 12.0
     max_entries_per_feed: int = 15
     resolve_news_links: bool = True
@@ -104,6 +105,7 @@ def load_settings() -> Settings:
         enable_daily_scheduler=_bool_env("ENABLE_DAILY_SCHEDULER", False),
         newsletter_timezone=os.getenv("NEWSLETTER_TIMEZONE", "Asia/Seoul"),
         default_language=os.getenv("DEFAULT_LANGUAGE", "ko"),
+        port=int(os.getenv("PORT") or os.getenv("WEB_PORT") or "8001"),
         request_timeout_seconds=float(os.getenv("REQUEST_TIMEOUT_SECONDS", "12")),
         max_entries_per_feed=int(os.getenv("MAX_ENTRIES_PER_FEED", "15")),
         resolve_news_links=_bool_env("RESOLVE_NEWS_LINKS", True),
