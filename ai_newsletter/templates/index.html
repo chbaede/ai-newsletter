@@ -238,16 +238,23 @@
                          data-topics="{{ view.topic_keys|join(' ') }}"
                          data-source-type="{{ view.source_type }}">
                   <div class="card-meta">
-                    <span class="priority-badge {{ view.priority.level }}">
-                      <span class="lang-ko">{{ view.priority.label_ko }}</span>
-                      <span class="lang-en" style="display:none;">{{ view.priority.label_en }}</span>
-                      <span class="score-num">{{ view.priority.score }}</span>
-                    </span>
-                    <span class="evidence-badge {{ view.transparency.evidence_badge.css_class }}">
-                      <span class="lang-ko">{{ view.transparency.evidence_badge.label_ko }}</span>
-                      <span class="lang-en" style="display:none;">{{ view.transparency.evidence_badge.label_en }}</span>
-                    </span>
-                    <span class="pub-time">{{ view.published_time }}</span>
+                    <div class="meta-left">
+                      <span class="priority-badge {{ view.priority.level }}">
+                        <span class="lang-ko">{{ view.priority.label_ko }}</span>
+                        <span class="lang-en" style="display:none;">{{ view.priority.label_en }}</span>
+                        <span class="score-num">{{ view.priority.score }}</span>
+                      </span>
+                      <span class="evidence-badge {{ view.transparency.evidence_badge.css_class }}">
+                        <span class="lang-ko">{{ view.transparency.evidence_badge.label_ko }}</span>
+                        <span class="lang-en" style="display:none;">{{ view.transparency.evidence_badge.label_en }}</span>
+                      </span>
+                      <span class="pub-time">{{ view.published_time }}</span>
+                    </div>
+                    <a href="{{ view.source_url }}" class="original-link-btn" target="_blank" rel="noopener noreferrer" title="원문 기사 바로가기 (Open Original Article)">
+                      <span class="lang-ko">원문 링크</span>
+                      <span class="lang-en" style="display:none;">Original Article</span>
+                      <i data-lucide="external-link"></i>
+                    </a>
                   </div>
 
                   <h4 class="article-title">
@@ -348,8 +355,8 @@
                       {% endfor %}
                     </div>
                     <a href="{{ view.source_url }}" class="read-link" target="_blank" rel="noopener noreferrer">
-                      <span class="lang-ko">원문 보기</span>
-                      <span class="lang-en" style="display:none;">Read More</span>
+                      <span class="lang-ko">원문 읽기</span>
+                      <span class="lang-en" style="display:none;">Full Source</span>
                       <i data-lucide="external-link" style="width:12px;height:12px;"></i>
                     </a>
                   </div>
