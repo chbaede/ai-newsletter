@@ -127,23 +127,32 @@ class NewsletterStore:
                     primary_sources text not null default '[]',
                     independent_sources text not null default '[]',
                     evidence_diversity integer not null default 0,
-                    verification_status text not null default 'insufficient_evidence'
+                    verification_status text not null default 'insufficient_evidence',
+                    confidence_score real not null default 0.0,
+                    confidence_label text not null default 'Low',
+                    confidence_explanation_ko text not null default '',
+                    confidence_explanation_en text not null default ''
                 )
                 """
             )
-            # Migration: add new evidence columns to existing tables
+            # Migration: add new evidence and confidence columns to existing tables
             event_cols = [r[1] for r in conn.execute("pragma table_info(events)").fetchall()]
-            for col, default in [
-                ("evidence_sources", "'[]'"),
-                ("primary_sources", "'[]'"),
-                ("independent_sources", "'[]'"),
-                ("evidence_diversity", "0"),
-                ("verification_status", "'insufficient_evidence'"),
+            for col, col_type, default in [
+                ("evidence_sources", "text", "'[]'"),
+                ("primary_sources", "text", "'[]'"),
+                ("independent_sources", "text", "'[]'"),
+                ("evidence_diversity", "integer", "0"),
+                ("verification_status", "text", "'insufficient_evidence'"),
+                ("confidence_score", "real", "0.0"),
+                ("confidence_label", "text", "'Low'"),
+                ("confidence_explanation_ko", "text", "''"),
+                ("confidence_explanation_en", "text", "''"),
             ]:
                 if col not in event_cols:
                     conn.execute(
-                        f"alter table events add column {col} text not null default {default}"
+                        f"alter table events add column {col} {col_type} not null default {default}"
                     )
+
 
             conn.execute(
                 """
@@ -345,9 +354,11 @@ class NewsletterStore:
                         official_source_url, official_source_name, reference_source_name,
                         related_sources,
                         evidence_sources, primary_sources, independent_sources,
-                        evidence_diversity, verification_status
+                        evidence_diversity, verification_status,
+                        confidence_score, confidence_label,
+                        confidence_explanation_ko, confidence_explanation_en
                     )
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         event.event_id,
@@ -371,6 +382,10 @@ class NewsletterStore:
                         json.dumps(event.independent_sources, ensure_ascii=False),
                         event.evidence_diversity,
                         event.verification_status,
+                        event.confidence_score,
+                        event.confidence_label,
+                        event.confidence_explanation_ko,
+                        event.confidence_explanation_en,
                     ),
                 )
 
@@ -625,6 +640,10 @@ class NewsletterStore:
                 if "verification_status" in keys and row["verification_status"]
                 else "insufficient_evidence"
             ),
+            confidence_score=row["confidence_score"] if "confidence_score" in keys and row["confidence_score"] is not None else 0.0,
+            confidence_label=row["confidence_label"] if "confidence_label" in keys and row["confidence_label"] else "Low",
+            confidence_explanation_ko=row["confidence_explanation_ko"] if "confidence_explanation_ko" in keys and row["confidence_explanation_ko"] else "",
+            confidence_explanation_en=row["confidence_explanation_en"] if "confidence_explanation_en" in keys and row["confidence_explanation_en"] else "",
         )
 
 

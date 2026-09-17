@@ -238,6 +238,7 @@ def compute_event_evidence(articles: list[Article]) -> EventEvidence:
     # Separate into evidence-type buckets (per publisher, not per article)
     primary_pubs: list[str] = []
     independent_pubs: list[str] = []
+    research_pubs: list[str] = []
     discovery_pubs: list[str] = []
     community_pubs: list[str] = []
     other_pubs: list[str] = []
@@ -248,6 +249,8 @@ def compute_event_evidence(articles: list[Article]) -> EventEvidence:
             primary_pubs.append(pub)
         elif "independent" in levels:
             independent_pubs.append(pub)
+        elif "research" in levels:
+            research_pubs.append(pub)
         elif "discovery" in levels:
             discovery_pubs.append(pub)
         elif "community" in levels:
@@ -257,14 +260,16 @@ def compute_event_evidence(articles: list[Article]) -> EventEvidence:
 
     primary_pubs.sort()
     independent_pubs.sort()
+    research_pubs.sort()
 
     # All publishers except pure-discovery and community
-    substantive_pubs = sorted(set(primary_pubs) | set(independent_pubs) | set(other_pubs))
+    substantive_pubs = sorted(set(primary_pubs) | set(independent_pubs) | set(research_pubs) | set(other_pubs))
     all_pubs = sorted(publisher_evidence.keys())
 
     # Determine verification status
     n_primary = len(primary_pubs)
     n_independent = len(independent_pubs)
+    n_research = len(research_pubs)
     n_substantive = len(substantive_pubs)
     has_only_discovery = bool(discovery_pubs) and n_substantive == 0 and not community_pubs
     has_only_community = bool(community_pubs) and n_substantive == 0 and not discovery_pubs
@@ -284,6 +289,9 @@ def compute_event_evidence(articles: list[Article]) -> EventEvidence:
     elif n_independent == 1:
         # Single independent, no primary — treat as independently_reported
         status = VERIFICATION_STATUS_INDEPENDENTLY_REPORTED
+    elif n_research >= 1:
+        # Research publication without independent reporting
+        status = VERIFICATION_STATUS_PRIMARY_ONLY
     else:
         status = VERIFICATION_STATUS_INSUFFICIENT
 
@@ -295,6 +303,235 @@ def compute_event_evidence(articles: list[Article]) -> EventEvidence:
         independent_sources=independent_pubs,
         evidence_diversity=evidence_diversity,
         verification_status=status,
+    )
+
+
+# ── Evidence confidence ───────────────────────────────────────────────────────
+
+CONFIDENCE_LABEL_HIGH = "High"
+CONFIDENCE_LABEL_MEDIUM = "Medium"
+CONFIDENCE_LABEL_LOW = "Low"
+
+CONFIDENCE_LABEL_HIGH_KO = "높음"
+CONFIDENCE_LABEL_MEDIUM_KO = "보통"
+CONFIDENCE_LABEL_LOW_KO = "낮음"
+
+# Score thresholds
+_THRESHOLD_HIGH = 70.0
+_THRESHOLD_MEDIUM = 40.0
+
+# Display caps on publisher names in explanations (keep it short)
+_MAX_PUB_NAMES = 3
+
+
+@dataclass(slots=True)
+class ConfidenceResult:
+    """Evidence confidence for an event cluster.
+
+    confidence_score:   0–100 composite score.
+    confidence_label:   "High" | "Medium" | "Low"
+    label_ko:           "높음" | "보통" | "낮음"
+    explanation_en:     Short English explanation, e.g.:
+                        "OpenAI primary announcement + independent Reuters reporting"
+    explanation_ko:     Short Korean explanation, e.g.:
+                        "OpenAI 공식 발표 + Reuters 독립 취재"
+    """
+    confidence_score: float
+    confidence_label: str
+    label_ko: str
+    explanation_en: str
+    explanation_ko: str
+
+
+def _pretty_pub(name: str) -> str:
+    """Title-case a canonical (lowercase) publisher name for display."""
+    return " ".join(w.capitalize() for w in name.split())
+
+
+def _build_explanation(
+    primary_sources: list[str],
+    independent_sources: list[str],
+    verification_status: str,
+    has_research: bool,
+    has_regulatory: bool,
+) -> tuple[str, str]:
+    """Build short bilingual explanations (English, Korean).
+
+    Rules:
+    - Never say "verified" or "확인됨" as a factual claim
+    - Neutral, factual phrasing only
+    - Cap at _MAX_PUB_NAMES names each side to keep it short
+    """
+    en_parts: list[str] = []
+    ko_parts: list[str] = []
+
+    if verification_status == VERIFICATION_STATUS_DISCOVERY_ONLY:
+        return (
+            "Only discovered through an aggregator",
+            "검색 집계 결과만 확인됨",
+        )
+    if verification_status == VERIFICATION_STATUS_INSUFFICIENT:
+        return (
+            "Insufficient evidence — community discussion or no known publisher",
+            "충분한 출처 없음 — 커뮤니티 논의 또는 알 수 없는 출처",
+        )
+
+    if has_regulatory:
+        en_parts.append("regulatory source")
+        ko_parts.append("규제기관 발표")
+
+    if primary_sources:
+        display = [_pretty_pub(p) for p in primary_sources[:_MAX_PUB_NAMES]]
+        more = len(primary_sources) - _MAX_PUB_NAMES
+        names_en = ", ".join(display) + (f" (+{more} more)" if more > 0 else "")
+        names_ko = ", ".join(display) + (f" 외 {more}곳" if more > 0 else "")
+        en_parts.append(f"{names_en} primary announcement")
+        ko_parts.append(f"{names_ko} 공식 발표")
+
+    if has_research and not primary_sources:
+        en_parts.append("research publication")
+        ko_parts.append("연구기관 발표 기반")
+
+    if independent_sources:
+        display = [_pretty_pub(p) for p in independent_sources[:_MAX_PUB_NAMES]]
+        more = len(independent_sources) - _MAX_PUB_NAMES
+        names_en = ", ".join(display) + (f" (+{more} more)" if more > 0 else "")
+        names_ko = ", ".join(display) + (f" 외 {more}곳" if more > 0 else "")
+        en_parts.append(f"independent {names_en} reporting")
+        ko_parts.append(f"{names_ko} 독립 취재")
+
+    if not en_parts:
+        # Industry media or other fallback
+        return (
+            "Industry media coverage only",
+            "산업 전문 매체 보도만 확인됨",
+        )
+
+    return " + ".join(en_parts), " + ".join(ko_parts)
+
+
+def compute_event_confidence(
+    evidence: EventEvidence,
+    articles: list[Article],
+) -> ConfidenceResult:
+    """Compute evidence confidence for an event cluster.
+
+    Score is 0–100.  It describes the strength and diversity of *available*
+    evidence, NOT a claim that the underlying fact is objectively true.
+
+    Scoring approach
+    ----------------
+    Base score from verification_status:
+      multi_source            85
+      independently_reported  70
+      primary_only            58
+      (fallback/other)        40
+      discovery_only          22
+      insufficient_evidence   10
+
+    Modifiers (all additive/subtractive, capped at 0–100):
+      +12  regulatory source present
+      +8   research evidence present (evidence_level==research)
+      +6   each additional independent publisher beyond 1 (max +18)
+      +5   primary source authority score ≥ 95 (frontier lab)
+      +4   primary source authority score ≥ 90
+      +3   at least one article has non-empty content
+      -8   all articles are discovery-source only
+      -5   evidence_diversity == 1 and no independent source
+           (single industry_media outlet, no primary or independent)
+    """
+    status = evidence.verification_status
+
+    # Base score
+    if status == VERIFICATION_STATUS_MULTI_SOURCE:
+        score = 85.0
+    elif status == VERIFICATION_STATUS_INDEPENDENTLY_REPORTED:
+        score = 70.0
+    elif status == VERIFICATION_STATUS_PRIMARY_ONLY:
+        score = 58.0
+    elif status == VERIFICATION_STATUS_DISCOVERY_ONLY:
+        score = 22.0
+    else:  # insufficient_evidence
+        score = 10.0
+
+    has_research = any(
+        (a.evidence_level or "") == "research"
+        or (a.source_type or "") in {"research", "paper", "preprint"}
+        for a in articles
+    )
+    has_regulatory = any(
+        (a.source_type or "") == "regulator"
+        for a in articles
+    )
+    has_content = any(bool((a.content or "").strip()) for a in articles)
+
+    # Modifier: regulatory source
+    if has_regulatory:
+        score += 12.0
+
+    # Modifier: research evidence
+    if has_research:
+        score += 8.0
+
+    # Modifier: extra independent publishers (each beyond the first)
+    extra_ind = max(0, len(evidence.independent_sources) - 1)
+    score += min(18.0, extra_ind * 6.0)
+
+    # Modifier: primary source authority
+    max_authority = 0
+    for a in articles:
+        if a.is_primary_source or (a.source_type or "") in {"official", "regulator"}:
+            auth = a.authority_score or a.source_authority or 0
+            if auth and auth > max_authority:
+                max_authority = auth
+    if max_authority >= 95:
+        score += 5.0
+    elif max_authority >= 90:
+        score += 4.0
+
+    # Modifier: article content present
+    if has_content:
+        score += 3.0
+
+    # Penalty: discovery only
+    if status == VERIFICATION_STATUS_DISCOVERY_ONLY:
+        score -= 8.0
+
+    # Penalty: single non-primary/non-independent publisher
+    if (
+        evidence.evidence_diversity == 1
+        and len(evidence.primary_sources) == 0
+        and len(evidence.independent_sources) == 0
+    ):
+        score -= 5.0
+
+    score = round(max(0.0, min(100.0, score)), 1)
+
+    # Label
+    if score >= _THRESHOLD_HIGH:
+        label = CONFIDENCE_LABEL_HIGH
+        label_ko = CONFIDENCE_LABEL_HIGH_KO
+    elif score >= _THRESHOLD_MEDIUM:
+        label = CONFIDENCE_LABEL_MEDIUM
+        label_ko = CONFIDENCE_LABEL_MEDIUM_KO
+    else:
+        label = CONFIDENCE_LABEL_LOW
+        label_ko = CONFIDENCE_LABEL_LOW_KO
+
+    explanation_en, explanation_ko = _build_explanation(
+        primary_sources=evidence.primary_sources,
+        independent_sources=evidence.independent_sources,
+        verification_status=status,
+        has_research=has_research,
+        has_regulatory=has_regulatory,
+    )
+
+    return ConfidenceResult(
+        confidence_score=score,
+        confidence_label=label,
+        label_ko=label_ko,
+        explanation_en=explanation_en,
+        explanation_ko=explanation_ko,
     )
 
 
@@ -372,6 +609,9 @@ def cluster_articles(
         # Compute deduplicated evidence metadata
         ev_evidence = compute_event_evidence(cluster_items)
 
+        # Compute evidence confidence score and explanation
+        ev_confidence = compute_event_confidence(ev_evidence, cluster_items)
+
         event = Event(
             event_id=ev_id,
             title=event_title,
@@ -392,8 +632,14 @@ def cluster_articles(
             independent_sources=ev_evidence.independent_sources,
             evidence_diversity=ev_evidence.evidence_diversity,
             verification_status=ev_evidence.verification_status,
+            # Confidence
+            confidence_score=ev_confidence.confidence_score,
+            confidence_label=ev_confidence.confidence_label,
+            confidence_explanation_ko=ev_confidence.explanation_ko,
+            confidence_explanation_en=ev_confidence.explanation_en,
         )
         events.append(event)
+
 
         rel_ids = [a.article_id for a in cluster_items if a.article_id]
         for a in cluster_items:

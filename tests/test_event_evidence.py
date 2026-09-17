@@ -523,8 +523,214 @@ def test_event_evidence_fields_exist():
     assert hasattr(event, "independent_sources")
     assert hasattr(event, "evidence_diversity")
     assert hasattr(event, "verification_status")
+    assert hasattr(event, "confidence_score")
+    assert hasattr(event, "confidence_label")
+    assert hasattr(event, "confidence_explanation_ko")
+    assert hasattr(event, "confidence_explanation_en")
     assert isinstance(event.evidence_sources, list)
     assert isinstance(event.primary_sources, list)
     assert isinstance(event.independent_sources, list)
     assert isinstance(event.evidence_diversity, int)
     assert isinstance(event.verification_status, str)
+    assert isinstance(event.confidence_score, float)
+    assert isinstance(event.confidence_label, str)
+    assert isinstance(event.confidence_explanation_ko, str)
+    assert isinstance(event.confidence_explanation_en, str)
+
+
+# ── Confidence scoring tests ──────────────────────────────────────────────────
+
+from ai_newsletter.clustering import (
+    CONFIDENCE_LABEL_HIGH,
+    CONFIDENCE_LABEL_HIGH_KO,
+    CONFIDENCE_LABEL_LOW,
+    CONFIDENCE_LABEL_LOW_KO,
+    CONFIDENCE_LABEL_MEDIUM,
+    CONFIDENCE_LABEL_MEDIUM_KO,
+    compute_event_confidence,
+)
+
+
+def test_confidence_primary_only_official():
+    """Primary announcement only -> Medium / High depending on authority."""
+    articles = [
+        make_article(
+            "OpenAI announces GPT-5",
+            "https://openai.com/blog/gpt-5",
+            publisher="OpenAI",
+            evidence_level="primary",
+            source_type="official",
+            is_primary_source=True,
+        )
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+    assert conf.confidence_label in {CONFIDENCE_LABEL_MEDIUM, CONFIDENCE_LABEL_HIGH}
+    assert "Openai primary announcement" in conf.explanation_en or "OpenAI" in conf.explanation_en
+    assert "Openai 공식 발표" in conf.explanation_ko or "OpenAI" in conf.explanation_ko
+    assert "verified" not in conf.explanation_en.lower()
+    assert "fact" not in conf.explanation_en.lower()
+
+
+def test_confidence_primary_plus_independent():
+    """Primary + independent reporting -> High confidence."""
+    articles = [
+        make_article(
+            "OpenAI launches GPT-5",
+            "https://openai.com/blog/gpt-5",
+            publisher="OpenAI",
+            evidence_level="primary",
+            source_type="official",
+            is_primary_source=True,
+        ),
+        make_article(
+            "OpenAI launches GPT-5 in major milestone",
+            "https://reuters.com/tech/openai-gpt5",
+            publisher="Reuters",
+            evidence_level="independent",
+            source_type="media",
+            is_independent_source=True,
+        ),
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+    assert conf.confidence_label == CONFIDENCE_LABEL_HIGH
+    assert conf.label_ko == CONFIDENCE_LABEL_HIGH_KO
+    assert conf.confidence_score >= 70.0
+    assert "Openai primary announcement" in conf.explanation_en
+    assert "independent Reuters reporting" in conf.explanation_en
+    assert "Openai 공식 발표" in conf.explanation_ko
+    assert "Reuters 독립 취재" in conf.explanation_ko
+
+
+def test_confidence_multiple_independent_publishers():
+    """Multiple independent publishers -> High confidence."""
+    articles = [
+        make_article(
+            "OpenAI prepares GPT-5 launch",
+            "https://reuters.com/tech/openai-gpt5",
+            publisher="Reuters",
+            evidence_level="independent",
+            source_type="media",
+            is_independent_source=True,
+        ),
+        make_article(
+            "Bloomberg: OpenAI to unveil GPT-5 soon",
+            "https://bloomberg.com/tech/openai-gpt5",
+            publisher="Bloomberg",
+            evidence_level="independent",
+            source_type="media",
+            is_independent_source=True,
+        ),
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+    assert conf.confidence_label == CONFIDENCE_LABEL_HIGH
+    assert conf.label_ko == CONFIDENCE_LABEL_HIGH_KO
+    assert conf.confidence_score >= 75.0
+    assert "independent" in conf.explanation_en.lower()
+    assert "독립 취재" in conf.explanation_ko
+
+
+def test_confidence_research_preprint():
+    """Research publication / preprint -> Medium confidence."""
+    articles = [
+        make_article(
+            "Scaling Laws for Next-Gen LLMs",
+            "https://arxiv.org/abs/2609.12345",
+            publisher="arXiv",
+            evidence_level="research",
+            source_type="research",
+        )
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+    assert conf.confidence_label == CONFIDENCE_LABEL_MEDIUM
+    assert conf.label_ko == CONFIDENCE_LABEL_MEDIUM_KO
+    assert "research publication" in conf.explanation_en.lower()
+    assert "연구기관 발표 기반" in conf.explanation_ko
+
+
+def test_confidence_community_only():
+    """Community discussion only -> Low confidence."""
+    articles = [
+        make_article(
+            "Rumors about GPT-5 on Hacker News",
+            "https://news.ycombinator.com/item?id=9999",
+            publisher="Hacker News",
+            evidence_level="community",
+            source_type="community",
+        )
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+    assert conf.confidence_label == CONFIDENCE_LABEL_LOW
+    assert conf.label_ko == CONFIDENCE_LABEL_LOW_KO
+    assert conf.confidence_score < 44.0
+    assert "community" in conf.explanation_en.lower() or "insufficient" in conf.explanation_en.lower()
+    assert "커뮤니티" in conf.explanation_ko or "출처 없음" in conf.explanation_ko
+
+
+def test_confidence_discovery_only():
+    """Google News discovery only -> Low confidence."""
+    articles = [
+        make_article(
+            "OpenAI GPT-5 update - Google News",
+            "https://news.google.com/articles/123",
+            publisher="Google News",
+            evidence_level="discovery",
+            source_type="aggregator",
+            is_discovery_source=True,
+        )
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+    assert conf.confidence_label == CONFIDENCE_LABEL_LOW
+    assert conf.label_ko == CONFIDENCE_LABEL_LOW_KO
+    assert conf.confidence_score < 44.0
+    assert "aggregator" in conf.explanation_en.lower()
+    assert "검색 집계 결과만 확인됨" in conf.explanation_ko
+
+
+def test_confidence_duplicated_same_publisher():
+    """Multiple articles from same publisher do not inflate independent count or confidence."""
+    articles = [
+        make_article(
+            "Reuters report part 1",
+            "https://reuters.com/tech/p1",
+            publisher="Reuters Technology",
+            evidence_level="independent",
+            is_independent_source=True,
+        ),
+        make_article(
+            "Reuters report follow-up",
+            "https://reuters.com/tech/p2",
+            publisher="Reuters News",
+            evidence_level="independent",
+            is_independent_source=True,
+        ),
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+    # Both normalize to "reuters" -> len(independent_sources) == 1
+    assert len(ev.independent_sources) == 1
+    assert conf.confidence_score < 85.0  # Not boosted to multi_source base 85
+
+
+def test_confidence_no_publisher_or_empty():
+    """Edge case: article with empty publisher."""
+    articles = [
+        make_article(
+            "Anonymous leak post",
+            "https://example.com/post",
+            publisher="",
+            source="",
+            evidence_level="community",
+        )
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+    assert conf.confidence_label == CONFIDENCE_LABEL_LOW
+    assert conf.confidence_score <= 20.0
+    assert "insufficient" in conf.explanation_en.lower()
+

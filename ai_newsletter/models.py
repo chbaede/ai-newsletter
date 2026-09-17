@@ -220,6 +220,20 @@ class Event:
     #         "discovery_only" | "insufficient_evidence"
     verification_status: str = "insufficient_evidence"
 
+    # ── Evidence confidence ───────────────────────────────────────────────
+    # Composite score 0–100 describing strength and diversity of evidence.
+    # This is NOT a claim that the underlying fact is objectively true.
+    # It reflects available evidence quality, NOT factual verification.
+    confidence_score: float = 0.0
+    # Categorical label: "High" | "Medium" | "Low"
+    confidence_label: str = "Low"
+    # Short factual explanation (Korean)
+    # e.g. "OpenAI 공식 발표 + Reuters 독립 취재"
+    confidence_explanation_ko: str = ""
+    # Short factual explanation (English)
+    # e.g. "OpenAI primary announcement + independent Reuters reporting"
+    confidence_explanation_en: str = ""
+
     def __post_init__(self) -> None:
         if self.created_at is None:
             self.created_at = datetime.now(timezone.utc)
