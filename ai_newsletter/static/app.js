@@ -370,5 +370,26 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+  // AdSense active container observer
+  const checkAdContainers = () => {
+    document.querySelectorAll(".ad-container").forEach((container) => {
+      const ins = container.querySelector("ins.adsbygoogle");
+      if (ins) {
+        const hasIframe = ins.querySelector("iframe") !== null;
+        const isFilled = ins.getAttribute("data-ad-status") === "filled";
+        if (hasIframe || isFilled) {
+          container.classList.add("is-active");
+        } else {
+          container.classList.remove("is-active");
+        }
+      }
+    });
+  };
+
+  checkAdContainers();
+  // Periodically check if AdSense loaded
+  setTimeout(checkAdContainers, 1500);
+  setTimeout(checkAdContainers, 3500);
 });
 

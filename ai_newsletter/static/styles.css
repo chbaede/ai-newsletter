@@ -1193,6 +1193,7 @@ html.dark-mode .conf-low {
 
 /* ── AdSense Native Containers ───────────────────────────────────────────── */
 .ad-container {
+  display: none; /* Hidden by default until active ad content is loaded */
   margin: 28px 0;
   padding: 16px 20px;
   background: var(--surface);
@@ -1203,6 +1204,13 @@ html.dark-mode .conf-low {
   text-align: center;
   position: relative;
   transition: all 0.25s ease;
+}
+
+/* Show container only when containing filled ad */
+.ad-container:has(ins.adsbygoogle[data-ad-status="filled"]),
+.ad-container:has(ins.adsbygoogle iframe),
+.ad-container.is-active {
+  display: block;
 }
 
 .ad-container--banner {
