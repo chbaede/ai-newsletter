@@ -345,3 +345,160 @@ def test_feed_health_for_new_sources():
         assert res["entries_count"] > 0, f"Feed {res['id']} returned 0 entries"
 
 
+# ────────────────────────────────────────────────────────────────
+# Phase 4: Independent journalism & industry media sources
+# ────────────────────────────────────────────────────────────────
+
+
+def test_independent_journalism_feeds_classification():
+    """Reuters, Bloomberg, FT, WSJ, The Information must be evidence_level=independent."""
+    independent_ids = [
+        "reuters_ai",
+        "bloomberg_ai",
+        "ft_tech_ai",
+        "wsj_tech",
+        "the_information_ai",
+    ]
+    for sid in independent_ids:
+        feed = get_source(sid)
+        assert feed is not None, f"Missing independent journalism feed: {sid}"
+        assert feed.evidence_level == "independent", (
+            f"{sid}: expected evidence_level='independent', got '{feed.evidence_level}'"
+        )
+        assert feed.is_independent_source is True, f"{sid} must be is_independent_source=True"
+        assert feed.is_primary_source is False, f"{sid} must NOT be is_primary_source"
+        assert feed.is_discovery_source is False, f"{sid} must NOT be is_discovery_source"
+        assert feed.url.startswith("http"), f"{sid} has invalid URL: {feed.url}"
+        assert feed.catalog_group == "media"
+
+
+def test_industry_media_new_feeds_classification():
+    """Wired and Ars Technica must be evidence_level=industry_media (NOT independent)."""
+    industry_ids = ["wired_ai", "arstechnica_ai"]
+    for sid in industry_ids:
+        feed = get_source(sid)
+        assert feed is not None, f"Missing industry media feed: {sid}"
+        assert feed.evidence_level == "industry_media", (
+            f"{sid}: expected 'industry_media', got '{feed.evidence_level}'"
+        )
+        assert feed.is_independent_source is False, (
+            f"{sid}: industry_media feed must NOT be marked independent"
+        )
+        assert feed.is_primary_source is False
+        assert feed.catalog_group == "media"
+
+
+def test_independent_vs_primary_are_separate_evidence():
+    """
+    A Reuters article about an OpenAI announcement is independent evidence.
+    The OpenAI announcement itself is primary evidence.
+    These must be treated as separate, non-interchangeable evidence items.
+    """
+    from ai_newsletter.models import Article
+
+    # Primary source: OpenAI's own announcement
+    openai_article = Article(
+        title="OpenAI launches GPT-5",
+        url="https://openai.com/blog/gpt-5",
+        source="OpenAI",
+        source_type="official",
+        evidence_level="primary",
+        is_primary_source=True,
+        is_independent_source=False,
+    )
+    assert openai_article.evidence_level == "primary"
+    assert openai_article.is_primary_source is True
+    assert openai_article.is_independent_source is False
+
+    # Independent source: Reuters reporting the same event
+    reuters_article = Article(
+        title="OpenAI launches GPT-5 — Reuters",
+        url="https://reuters.com/technology/openai-gpt5",
+        source="Reuters Technology AI",
+        publisher="Reuters",
+        source_type="media",
+        evidence_level="independent",
+        is_primary_source=False,
+        is_independent_source=True,
+    )
+    assert reuters_article.evidence_level == "independent"
+    assert reuters_article.is_independent_source is True
+    assert reuters_article.is_primary_source is False
+
+    # They have different evidence_level — not interchangeable
+    assert openai_article.evidence_level != reuters_article.evidence_level
+
+
+def test_source_authority_includes_new_publishers():
+    """KNOWN_PUBLISHER_AUTHORITY must include independent journalism publishers."""
+    from ai_newsletter.sources import KNOWN_PUBLISHER_AUTHORITY, source_authority
+
+    for pub in ("reuters", "bloomberg", "financial times", "wsj", "ft"):
+        assert pub in KNOWN_PUBLISHER_AUTHORITY, f"Missing authority entry for: {pub}"
+        assert KNOWN_PUBLISHER_AUTHORITY[pub] >= 90
+
+    # source_authority() lookup by name
+    assert source_authority("Reuters") >= 90
+    assert source_authority("Bloomberg") >= 90
+    assert source_authority("Financial Times") >= 90
+    assert source_authority("WSJ") >= 90
+
+
+def test_source_evidence_level_for_independent_journalism():
+    """source_evidence_level() must recognise WSJ / FT by name string."""
+    from ai_newsletter.sources import source_evidence_level
+
+    assert source_evidence_level("Wall Street Journal") == "independent"
+    assert source_evidence_level("wsj") == "independent"
+    assert source_evidence_level("financial times") == "independent"
+    assert source_evidence_level("reuters") == "independent"
+    assert source_evidence_level("bloomberg") == "independent"
+
+
+def test_no_duplicate_independent_journalism_ids():
+    """Sanity: no two independent journalism feeds share an ID or URL."""
+    from ai_newsletter.collector import canonicalize_url
+
+    independent_ids = [
+        "reuters_ai",
+        "bloomberg_ai",
+        "ft_tech_ai",
+        "wsj_tech",
+        "the_information_ai",
+        "mit_tech_review",
+    ]
+    feeds = [get_source(sid) for sid in independent_ids]
+    assert all(f is not None for f in feeds), "One or more independent journalism feeds missing"
+
+    urls = [canonicalize_url(f.url) for f in feeds]
+    assert len(urls) == len(set(urls)), f"Duplicate canonical URLs: {urls}"
+
+    ids = [f.id for f in feeds]
+    assert len(ids) == len(set(ids)), f"Duplicate IDs: {ids}"
+
+
+def test_independent_journalism_feeds_in_get_independent_sources():
+    """get_independent_sources() must include all new independent journalism feeds."""
+    from ai_newsletter.sources import get_independent_sources
+
+    independents = {f.id for f in get_independent_sources()}
+    expected = {"reuters_ai", "bloomberg_ai", "ft_tech_ai", "wsj_tech", "the_information_ai", "mit_tech_review"}
+    missing = expected - independents
+    assert not missing, f"Missing from get_independent_sources(): {missing}"
+
+
+def test_industry_media_not_in_independent_sources():
+    """Wired and Ars Technica must NOT appear in get_independent_sources()."""
+    from ai_newsletter.sources import get_independent_sources
+
+    independents = {f.id for f in get_independent_sources()}
+    assert "wired_ai" not in independents, "Wired should NOT be in independent sources"
+    assert "arstechnica_ai" not in independents, "Ars Technica should NOT be in independent sources"
+
+
+def test_total_feed_count():
+    """Verify total catalog has grown to 39 feeds."""
+    assert len(SOURCE_CATALOG) == 39, (
+        f"Expected 39 feeds in SOURCE_CATALOG, got {len(SOURCE_CATALOG)}"
+    )
+

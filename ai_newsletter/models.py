@@ -165,8 +165,6 @@ class Article:
         if self.evidence_level == "industry_media":
             if self.is_primary_source:
                 self.evidence_level = "primary"
-            elif self.is_independent_source:
-                self.evidence_level = "independent"
             elif self.is_discovery_source:
                 self.evidence_level = "discovery"
             elif self.source_type == "research":

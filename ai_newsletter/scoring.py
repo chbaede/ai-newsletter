@@ -371,9 +371,9 @@ def compute_multi_dimensional_scores(
         or "google news" in (article.publisher or "").lower()
     ):
         evidence_lvl = "discovery"
-    elif article.is_primary_source and evidence_lvl != "discovery":
+    elif article.is_primary_source and evidence_lvl not in {"discovery"}:
         evidence_lvl = "primary"
-    elif article.is_independent_source and evidence_lvl != "discovery":
+    elif article.is_independent_source and evidence_lvl not in {"discovery", "industry_media", "community"}:
         evidence_lvl = "independent"
 
     if evidence_lvl == "research" or (article.source_type or "").lower() in {"research", "paper", "preprint"}:
