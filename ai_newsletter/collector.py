@@ -176,6 +176,10 @@ def parse_feed_entry(entry: dict, source_feed: SourceFeed) -> FeedEntry | None:
         source_authority=source_feed.authority_score,
         canonical_url=canonicalize_url(link),
         content=content,
+        evidence_level=source_feed.evidence_level,
+        is_primary_source=source_feed.is_primary_source,
+        is_independent_source=source_feed.is_independent_source,
+        is_discovery_source=source_feed.is_discovery_source,
     )
 
 
@@ -273,6 +277,10 @@ def collect_from_entries(
             publisher=entry.publisher,
             canonical_url=canonical_url,
             content=entry.content,
+            evidence_level=entry.evidence_level,
+            is_primary_source=entry.is_primary_source,
+            is_independent_source=entry.is_independent_source,
+            is_discovery_source=entry.is_discovery_source,
         )
 
         classified = classify_article(

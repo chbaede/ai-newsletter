@@ -24,6 +24,10 @@ class FeedEntry:
     collected_at: datetime | None = None
     content: str = ""
     content_source_type: str = "fallback"
+    evidence_level: str = "industry_media"
+    is_primary_source: bool = False
+    is_independent_source: bool = False
+    is_discovery_source: bool = False
 
     def __post_init__(self) -> None:
         if self.source_authority is None:
@@ -111,6 +115,9 @@ class Article:
     is_official: bool = False
     is_reference: bool = False
     is_primary_source: bool = False
+    is_independent_source: bool = False
+    is_discovery_source: bool = False
+    evidence_level: str = "industry_media"
 
     # Timing
     collected_at: datetime | None = None
@@ -148,8 +155,28 @@ class Article:
             self.is_official = True
         if not self.is_primary_source and self.source_type in {"official", "regulator", "press_release"}:
             self.is_primary_source = True
+        if not self.is_discovery_source and self.source_type in {"aggregator"}:
+            self.is_discovery_source = True
         if not self.is_reference and self.source_type in {"regulator", "institution", "research"}:
             self.is_reference = True
+
+        if self.evidence_level == "industry_media":
+            if self.is_primary_source:
+                self.evidence_level = "primary"
+            elif self.is_independent_source:
+                self.evidence_level = "independent"
+            elif self.is_discovery_source:
+                self.evidence_level = "discovery"
+            elif self.source_type == "research":
+                self.evidence_level = "research"
+            elif self.source_type == "community":
+                self.evidence_level = "community"
+        elif self.evidence_level == "primary":
+            self.is_primary_source = True
+        elif self.evidence_level == "independent":
+            self.is_independent_source = True
+        elif self.evidence_level == "discovery":
+            self.is_discovery_source = True
 
         if self.collected_at is None:
             self.collected_at = datetime.now(timezone.utc)

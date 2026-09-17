@@ -2,7 +2,18 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import quote_plus
+
+
+EVIDENCE_LEVELS = (
+    "primary",
+    "research",
+    "independent",
+    "industry_media",
+    "community",
+    "discovery",
+)
 
 
 SECTION_LABELS = {
@@ -126,6 +137,10 @@ class SourceFeed:
     discovery_method: str = "rss"
     enabled: bool = True
     aliases: tuple[str, ...] = ()
+    evidence_level: str | None = None
+    is_primary_source: bool | None = None
+    is_independent_source: bool | None = None
+    is_discovery_source: bool | None = None
 
     def __post_init__(self) -> None:
         if self.id is None:
@@ -134,6 +149,40 @@ class SourceFeed:
         if self.authority_score is None:
             auth = AUTHORITY_HIERARCHY.get(self.source_type, 70)
             object.__setattr__(self, "authority_score", auth)
+
+        # 1. Resolve evidence_level
+        level = self.evidence_level
+        if level is None:
+            if self.is_primary_source is True:
+                level = "primary"
+            elif self.is_independent_source is True:
+                level = "independent"
+            elif self.is_discovery_source is True:
+                level = "discovery"
+            elif self.source_type in ("official", "regulator") or self.catalog_group == "primary":
+                level = "primary"
+            elif self.source_type == "research" or self.catalog_group == "research":
+                level = "research"
+            elif self.source_type == "aggregator" or self.catalog_group == "aggregator" or "google news" in self.name.lower():
+                level = "discovery"
+            elif self.source_type == "community":
+                level = "community"
+            elif self.id in ("mit_tech_review",) or any(ind in self.name.lower() for ind in ("reuters", "bloomberg", "financial times", "the information", "technology review")):
+                level = "independent"
+            else:
+                level = "industry_media"
+        else:
+            level = level.strip().lower()
+
+        object.__setattr__(self, "evidence_level", level)
+
+        # 2. Resolve boolean flags
+        if self.is_primary_source is None:
+            object.__setattr__(self, "is_primary_source", level == "primary")
+        if self.is_independent_source is None:
+            object.__setattr__(self, "is_independent_source", level == "independent")
+        if self.is_discovery_source is None:
+            object.__setattr__(self, "is_discovery_source", level == "discovery")
 
 
 def google_news_rss(query: str) -> str:
@@ -159,6 +208,8 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="search",
         aliases=("OpenAI", "ChatGPT"),
+        evidence_level="primary",
+        is_primary_source=True,
     ),
     SourceFeed(
         id="anthropic_news",
@@ -172,6 +223,8 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="search",
         aliases=("Anthropic", "Claude"),
+        evidence_level="primary",
+        is_primary_source=True,
     ),
     SourceFeed(
         id="deepmind_blog",
@@ -185,6 +238,8 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="search",
         aliases=("DeepMind", "Google DeepMind", "Gemini"),
+        evidence_level="primary",
+        is_primary_source=True,
     ),
     SourceFeed(
         id="meta_ai_blog",
@@ -198,6 +253,8 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="search",
         aliases=("Meta AI", "Llama"),
+        evidence_level="primary",
+        is_primary_source=True,
     ),
     SourceFeed(
         id="microsoft_ai",
@@ -211,6 +268,8 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="search",
         aliases=("Microsoft", "Copilot"),
+        evidence_level="primary",
+        is_primary_source=True,
     ),
     SourceFeed(
         id="nvidia_news",
@@ -224,6 +283,8 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="search",
         aliases=("NVIDIA", "Blackwell", "CUDA"),
+        evidence_level="primary",
+        is_primary_source=True,
     ),
     SourceFeed(
         id="huggingface_blog",
@@ -237,6 +298,8 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="rss",
         aliases=("Hugging Face", "HF"),
+        evidence_level="primary",
+        is_primary_source=True,
     ),
 ]
 
@@ -253,6 +316,7 @@ RESEARCH_SOURCES: list[SourceFeed] = [
         catalog_group="research",
         discovery_method="rss",
         aliases=("arXiv", "arXiv AI"),
+        evidence_level="research",
     ),
     SourceFeed(
         id="arxiv_cl",
@@ -266,6 +330,7 @@ RESEARCH_SOURCES: list[SourceFeed] = [
         catalog_group="research",
         discovery_method="rss",
         aliases=("arXiv CL", "arXiv NLP"),
+        evidence_level="research",
     ),
     SourceFeed(
         id="stanford_hai",
@@ -279,6 +344,7 @@ RESEARCH_SOURCES: list[SourceFeed] = [
         catalog_group="research",
         discovery_method="search",
         aliases=("Stanford HAI",),
+        evidence_level="research",
     ),
     SourceFeed(
         id="mit_csail",
@@ -292,6 +358,7 @@ RESEARCH_SOURCES: list[SourceFeed] = [
         catalog_group="research",
         discovery_method="search",
         aliases=("MIT CSAIL",),
+        evidence_level="research",
     ),
 ]
 
@@ -308,6 +375,7 @@ MEDIA_SOURCES: list[SourceFeed] = [
         catalog_group="media",
         discovery_method="rss",
         aliases=("TechCrunch",),
+        evidence_level="industry_media",
     ),
     SourceFeed(
         id="venturebeat_ai",
@@ -321,6 +389,7 @@ MEDIA_SOURCES: list[SourceFeed] = [
         catalog_group="media",
         discovery_method="search",
         aliases=("VentureBeat",),
+        evidence_level="industry_media",
     ),
     SourceFeed(
         id="theverge_ai",
@@ -334,6 +403,7 @@ MEDIA_SOURCES: list[SourceFeed] = [
         catalog_group="media",
         discovery_method="search",
         aliases=("The Verge",),
+        evidence_level="industry_media",
     ),
     SourceFeed(
         id="marktechpost",
@@ -347,6 +417,7 @@ MEDIA_SOURCES: list[SourceFeed] = [
         catalog_group="media",
         discovery_method="search",
         aliases=("MarkTechPost",),
+        evidence_level="industry_media",
     ),
     SourceFeed(
         id="mit_tech_review",
@@ -360,6 +431,8 @@ MEDIA_SOURCES: list[SourceFeed] = [
         catalog_group="media",
         discovery_method="search",
         aliases=("MIT Tech Review",),
+        evidence_level="independent",
+        is_independent_source=True,
     ),
 ]
 
@@ -376,6 +449,7 @@ KOREAN_SOURCES: list[SourceFeed] = [
         catalog_group="korean",
         discovery_method="search",
         aliases=("AI타임스", "AITimes"),
+        evidence_level="industry_media",
     ),
     SourceFeed(
         id="zdnet_ai_kr",
@@ -389,6 +463,7 @@ KOREAN_SOURCES: list[SourceFeed] = [
         catalog_group="korean",
         discovery_method="search",
         aliases=("ZDNet Korea", "지디넷"),
+        evidence_level="industry_media",
     ),
     SourceFeed(
         id="techm_kr",
@@ -402,6 +477,7 @@ KOREAN_SOURCES: list[SourceFeed] = [
         catalog_group="korean",
         discovery_method="search",
         aliases=("테크M",),
+        evidence_level="industry_media",
     ),
     SourceFeed(
         id="etnews_ai",
@@ -415,6 +491,7 @@ KOREAN_SOURCES: list[SourceFeed] = [
         catalog_group="korean",
         discovery_method="search",
         aliases=("전자신문",),
+        evidence_level="industry_media",
     ),
     SourceFeed(
         id="geeknews_ai",
@@ -428,6 +505,7 @@ KOREAN_SOURCES: list[SourceFeed] = [
         catalog_group="korean",
         discovery_method="search",
         aliases=("GeekNews", "긱뉴스"),
+        evidence_level="community",
     ),
 ]
 
@@ -444,6 +522,8 @@ REGULATION_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="search",
         aliases=("EU AI Office", "EU AI Act"),
+        evidence_level="primary",
+        is_primary_source=True,
     ),
     SourceFeed(
         id="us_nist_aisi",
@@ -457,6 +537,8 @@ REGULATION_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="search",
         aliases=("NIST", "AISI"),
+        evidence_level="primary",
+        is_primary_source=True,
     ),
     SourceFeed(
         id="msit_kr_ai",
@@ -470,6 +552,8 @@ REGULATION_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="search",
         aliases=("과기정통부", "MSIT"),
+        evidence_level="primary",
+        is_primary_source=True,
     ),
 ]
 
@@ -485,6 +569,8 @@ AGGREGATOR_SOURCES: list[SourceFeed] = [
         language="en",
         catalog_group="aggregator",
         discovery_method="rss",
+        evidence_level="discovery",
+        is_discovery_source=True,
     ),
     SourceFeed(
         id="gnews_kr_ai",
@@ -497,6 +583,8 @@ AGGREGATOR_SOURCES: list[SourceFeed] = [
         language="ko",
         catalog_group="aggregator",
         discovery_method="rss",
+        evidence_level="discovery",
+        is_discovery_source=True,
     ),
 ]
 
@@ -570,4 +658,90 @@ def classify_source_type(source_name: str) -> str:
     if any(k in name_clean for k in ["openai", "anthropic", "deepmind", "nvidia", "meta"]):
         return "official"
     return "media"
+
+
+def source_evidence_level(source: SourceFeed | Any | str | None) -> str:
+    """Return the evidence level for a source object, name, or ID.
+
+    Values:
+    - 'primary': Organization directly responsible for announcement, model, product, research or policy.
+    - 'research': Academic/research institutions or repositories (e.g. arXiv, Stanford HAI, MIT CSAIL).
+    - 'independent': Independent journalism/reporting (e.g. Reuters, Bloomberg, FT, The Information, MIT Tech Review).
+    - 'industry_media': Technology-focused publications (e.g. TechCrunch, The Verge, VentureBeat).
+    - 'community': Discussion/community forums (e.g. Hacker News, GeekNews).
+    - 'discovery': Aggregators/search systems (e.g. Google News).
+    """
+    if source is None:
+        return "industry_media"
+    if isinstance(source, SourceFeed):
+        return source.evidence_level
+    if hasattr(source, "evidence_level") and getattr(source, "evidence_level"):
+        return str(getattr(source, "evidence_level"))
+
+    source_str = str(source).strip()
+    meta = get_source(source_str) or source_metadata(source_str)
+    if meta is not None:
+        return meta.evidence_level
+
+    clean = source_str.lower()
+    # Check discovery systems (Google News, aggregators)
+    if any(disc in clean for disc in ("google news", "gnews")):
+        return "discovery"
+    # Check known independent journalism
+    if any(ind in clean for ind in ("reuters", "bloomberg", "financial times", "the information", "mit technology review", "technology review")):
+        return "independent"
+    # Check known primary sources (frontier labs, chipmakers, regulators)
+    if any(prim in clean for prim in ("openai", "anthropic", "deepmind", "google deepmind", "nvidia", "meta ai", "european commission", "eu ai office", "nist", "과기정통부", "microsoft ai", "hugging face")):
+        return "primary"
+    # Check known research repositories & academic labs
+    if any(res in clean for res in ("arxiv", "stanford hai", "mit csail", "bair", "berkeley bair", "papers with code")):
+        return "research"
+    # Check known community
+    if any(comm in clean for comm in ("hacker news", "geeknews", "reddit")):
+        return "community"
+
+    return "industry_media"
+
+
+def get_source_role(source: SourceFeed | Any | str | None) -> str:
+    """Return the role / evidence level of the given source."""
+    return source_evidence_level(source)
+
+
+def is_primary_source(source: SourceFeed | Any | str | None) -> bool:
+    """Return True if the source is the primary entity behind the announcement, model, research or policy."""
+    if isinstance(source, SourceFeed):
+        return source.is_primary_source
+    if hasattr(source, "is_primary_source") and getattr(source, "is_primary_source") is not None:
+        return bool(getattr(source, "is_primary_source"))
+    return source_evidence_level(source) == "primary"
+
+
+def is_independent_source(source: SourceFeed | Any | str | None) -> bool:
+    """Return True if the source is an independent journalism or investigative reporting outlet."""
+    if isinstance(source, SourceFeed):
+        return source.is_independent_source
+    if hasattr(source, "is_independent_source") and getattr(source, "is_independent_source") is not None:
+        return bool(getattr(source, "is_independent_source"))
+    return source_evidence_level(source) == "independent"
+
+
+def is_discovery_source(source: SourceFeed | Any | str | None) -> bool:
+    """Return True if the source is an aggregator / discovery feed (e.g. Google News)."""
+    if isinstance(source, SourceFeed):
+        return source.is_discovery_source
+    if hasattr(source, "is_discovery_source") and getattr(source, "is_discovery_source") is not None:
+        return bool(getattr(source, "is_discovery_source"))
+    return source_evidence_level(source) == "discovery"
+
+
+def get_independent_sources() -> list[SourceFeed]:
+    """Return all configured sources classified as independent journalism."""
+    return [feed for feed in SOURCE_CATALOG if feed.is_independent_source]
+
+
+def get_discovery_sources() -> list[SourceFeed]:
+    """Return all configured aggregator/discovery sources."""
+    return [feed for feed in SOURCE_CATALOG if feed.is_discovery_source]
+
 

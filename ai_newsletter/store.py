@@ -81,6 +81,9 @@ class NewsletterStore:
                     is_official integer not null default 0,
                     is_reference integer not null default 0,
                     is_primary_source integer not null default 0,
+                    is_independent_source integer not null default 0,
+                    is_discovery_source integer not null default 0,
+                    evidence_level text not null default 'industry_media',
                     collected_at text,
                     content text not null default '',
                     key_points text not null default '[]',
@@ -91,6 +94,13 @@ class NewsletterStore:
                 )
                 """
             )
+            article_cols = [r[1] for r in conn.execute("pragma table_info(articles)").fetchall()]
+            if "is_independent_source" not in article_cols:
+                conn.execute("alter table articles add column is_independent_source integer not null default 0")
+            if "is_discovery_source" not in article_cols:
+                conn.execute("alter table articles add column is_discovery_source integer not null default 0")
+            if "evidence_level" not in article_cols:
+                conn.execute("alter table articles add column evidence_level text not null default 'industry_media'")
             conn.execute(
                 """
                 create table if not exists events (
@@ -223,7 +233,9 @@ class NewsletterStore:
                         primary_category, secondary_categories, topics, entities,
                         source_score, relevance_score, impact_score, novelty_score, recency_score,
                         priority_score, event_id, event_title, related_article_ids,
-                        is_official, is_reference, is_primary_source, collected_at,
+                        is_official, is_reference, is_primary_source,
+                        is_independent_source, is_discovery_source, evidence_level,
+                        collected_at,
                         content, key_points, summary_model, summary_version, summary_created_at,
                         content_source_type
                     )
@@ -236,7 +248,9 @@ class NewsletterStore:
                         ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
                         ?, ?, ?, ?,
-                        ?, ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?, ?,
+                        ?,
                         ?, ?, ?, ?, ?,
                         ?
                     )
@@ -282,6 +296,9 @@ class NewsletterStore:
                         1 if article.is_official else 0,
                         1 if article.is_reference else 0,
                         1 if article.is_primary_source else 0,
+                        1 if article.is_independent_source else 0,
+                        1 if article.is_discovery_source else 0,
+                        article.evidence_level,
                         col_iso,
                         article.content,
                         json.dumps(article.key_points, ensure_ascii=False),
@@ -517,6 +534,9 @@ class NewsletterStore:
             is_official=bool(row["is_official"]),
             is_reference=bool(row["is_reference"]),
             is_primary_source=bool(row["is_primary_source"]),
+            is_independent_source=bool(row["is_independent_source"]) if "is_independent_source" in keys else False,
+            is_discovery_source=bool(row["is_discovery_source"]) if "is_discovery_source" in keys else False,
+            evidence_level=row["evidence_level"] if "evidence_level" in keys and row["evidence_level"] else "industry_media",
             collected_at=_parse_dt(row["collected_at"]),
         )
 
