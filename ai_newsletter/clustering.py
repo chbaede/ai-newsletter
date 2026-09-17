@@ -49,24 +49,32 @@ AI_MODEL_PATTERNS = [
 ]
 
 AI_EVENT_THEMES = {
-    "model_release": ["release", "launches", "unveils", "debuts", "introduces", "open weights", "rollout", "출시", "공개", "발표", "선보여", "오픈소스"],
-    "benchmarking": ["swe-bench", "mmlu", "benchmark", "outperforms", "beats", "sota", "evaluation", "evals", "벤치마크", "성능", "평가"],
-    "investment": ["funding", "valuation", "billion", "raises", "series", "ipo", "invest", "investment", "투자", "유치", "펀딩"],
+    "model_release": ["release", "releases", "released", "launch", "launches", "launched", "unveil", "unveils", "unveiled", "debut", "debuts", "debuted", "introduce", "introduces", "introduced", "open weights", "rollout", "announces", "announced", "announce", "출시", "공개", "발표", "선보여", "오픈소스"],
+    "pricing": ["pricing", "price", "prices", "subscription", "cost", "tier", "tiers", "plans", "rates", "가격", "요금", "구독", "비용", "단가"],
+    "benchmarking": ["swe-bench", "mmlu", "benchmark", "benchmarks", "outperforms", "beats", "sota", "evaluation", "evals", "벤치마크", "성능", "평가"],
+    "investment": ["funding", "valuation", "billion", "raises funding", "series", "ipo", "invest", "investment", "투자", "유치", "펀딩"],
     "partnership": ["partnership", "partners", "collaboration", "collaborates", "alliance", "joint", "agreement", "pact", "initiative", "team up", "teams up", "pacts", "제휴", "협력", "파트너십", "동맹", "협약", "손잡고", "협업", "이니셔티브"],
-    "legal_policy": ["lawsuit", "sues", "sued", "antitrust", "copyright", "ban", "compliance", "eu ai act", "regulation", "regulatory", "court", "probe", "investigation", "fine", "fined", "소송", "고소", "제소", "규제", "위반", "법안", "조사", "과징금"],
-    "security_safety": ["jailbreak", "vulnerability", "prompt injection", "exploit", "red team", "safety", "aisi", "alignment", "guardrail", "risk", "risks", "보안", "취약점", "안전", "안전성", "위험"],
+    "legal_policy": ["lawsuit", "sues", "sued", "antitrust", "copyright", "ban", "compliance", "eu ai act", "regulation", "regulatory", "court", "probe", "investigation", "investigates", "fine", "fined", "소송", "고소", "제소", "규제", "위반", "법안", "조사", "과징금"],
+    "security_safety": ["jailbreak", "vulnerability", "prompt injection", "exploit", "red team", "safety", "aisi", "alignment", "guardrail", "risk", "risks", "breach", "보안", "취약점", "안전", "안전성", "위험"],
     "datacenter_hardware": ["datacenter", "tape-out", "foundry", "hbm", "hbm3e", "gigawatt", "반도체", "양산", "데이터센터"],
     "corporate_expansion": ["office", "headquarters", "expansion", "expands", "expand", "hire", "hires", "executive", "resign", "resignation", "appointment", "사옥", "지사", "영입", "사임", "확장", "런던"],
 }
 
 AI_ACTION_ANCHORS = {
-    "release": ["release", "releases", "released", "launch", "launches", "launched", "unveil", "unveils", "unveiled", "debut", "debuts", "introduce", "introduces", "introduced", "rollout", "출시", "공개", "발표", "선보여"],
+    "release": ["release", "releases", "released", "launch", "launches", "launched", "unveil", "unveils", "unveiled", "debut", "debuts", "introduce", "introduces", "introduced", "rollout", "announces", "announced", "announce", "출시", "공개", "발표", "선보여"],
+    "pricing": ["pricing", "price", "prices", "subscription", "cost", "tier", "tiers", "plans", "rates", "가격", "요금", "구독", "비용", "단가"],
     "partnership": ["partner", "partners", "partnership", "collaborate", "collaborates", "collaboration", "alliance", "joint", "agreement", "pact", "initiative", "team up", "teams up", "제휴", "협력", "파트너십", "동맹", "협약", "손잡고", "협업", "이니셔티브"],
-    "legal": ["lawsuit", "sue", "sues", "sued", "antitrust", "copyright", "ban", "compliance", "regulation", "regulatory", "court", "probe", "investigation", "fine", "fined", "소송", "고소", "제소", "규제", "위반", "법안", "조사", "과징금"],
-    "security": ["safety", "aisi", "alignment", "jailbreak", "vulnerability", "exploit", "red team", "guardrail", "safeguard", "안전", "안전성", "보안", "취약점", "위험"],
-    "investment": ["funding", "valuation", "billion", "raise", "raises", "raised", "series", "ipo", "invest", "investment", "투자", "유치", "펀딩"],
+    "legal": ["lawsuit", "sue", "sues", "sued", "antitrust", "copyright", "ban", "compliance", "regulation", "regulatory", "court", "probe", "investigation", "investigates", "fine", "fined", "소송", "고소", "제소", "규제", "위반", "법안", "조사", "과징금"],
+    "security": ["safety", "aisi", "alignment", "jailbreak", "vulnerability", "exploit", "red team", "guardrail", "safeguard", "breach", "안전", "안전성", "보안", "취약점", "위험"],
+    "investment": ["funding", "valuation", "billion", "raises funding", "series", "ipo", "invest", "investment", "투자", "유치", "펀딩"],
     "corporate": ["office", "headquarters", "expansion", "expands", "expand", "hire", "hires", "hired", "executive", "resign", "resigns", "resignation", "appointment", "사옥", "지사", "영입", "사임", "임명", "확장"],
 }
+
+
+def _match_keyword_in_text(keyword: str, text: str) -> bool:
+    if re.search(r"^[a-z0-9\s_-]+$", keyword):
+        return bool(re.search(r"\b" + re.escape(keyword) + r"\b", text, re.I))
+    return keyword in text
 
 
 @dataclass(slots=True)
@@ -102,20 +110,21 @@ def extract_clustering_features(article: Article) -> ArticleClusteringFeatures:
     # Entities
     found_entities = set(find_entities_in_text(full_text))
 
-    # Clean tokens from title text (supports English and Korean)
-    cleaned = re.sub(r"[^a-z0-9가-힣\s]", " ", full_title_text.lower())
+    # Clean tokens from title text + key metadata (supports English and Korean)
+    token_seed_text = f"{full_title_text} {' '.join(article.tags or [])} {article.excerpt or ''}".lower()
+    cleaned = re.sub(r"[^a-z0-9가-힣\s]", " ", token_seed_text)
     tokens = {w for w in cleaned.split() if len(w) >= 2 and w not in STOP_WORDS}
 
     # Themes
     themes = set()
     for theme_name, keywords in AI_EVENT_THEMES.items():
-        if any(kw in full_text for kw in keywords):
+        if any(_match_keyword_in_text(kw, full_text) for kw in keywords):
             themes.add(theme_name)
 
     # Actions
     actions = set()
     for action_name, keywords in AI_ACTION_ANCHORS.items():
-        if any(kw in full_text for kw in keywords):
+        if any(_match_keyword_in_text(kw, full_text) for kw in keywords):
             actions.add(action_name)
 
     return ArticleClusteringFeatures(
@@ -183,14 +192,30 @@ def calculate_event_similarity(
         if not (has_multi_entity_joint_anchor or has_joint_event_anchor):
             return 0.0
 
-    # 3. Action clash penalties (e.g. corporate office expansion vs model release, lawsuit vs model release)
-    clash_penalty = 0.0
+    # 3. Action & Theme hard clash guards
+    # Strict separation between pricing updates and non-pricing stories
+    if ("pricing" in f1.actions) ^ ("pricing" in f2.actions):
+        return 0.0
+
+    # Strict separation between corporate expansion (office/hiring/executives) and non-corporate stories
     if ("corporate_expansion" in f1.themes) ^ ("corporate_expansion" in f2.themes):
         if not (f1.themes & f2.themes):
-            clash_penalty += 0.35
+            return 0.0
+
+    # 4. Action & Theme clash penalties
+    clash_penalty = 0.0
+    # Legal / investigation vs pure release / product (unless shared legal/policy theme)
     if (("legal" in f1.actions) ^ ("legal" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
         if not ((f1.themes & f2.themes) & {"legal_policy", "partnership"}):
-            clash_penalty += 0.35
+            clash_penalty += 0.45
+    # Security vulnerability vs pure release
+    if (("security" in f1.actions) ^ ("security" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
+        if not ((f1.themes & f2.themes) & {"security_safety", "partnership"}):
+            clash_penalty += 0.40
+    # Partnership vs pure release (without shared partnership or multi-entity context)
+    if (("partnership" in f1.actions) ^ ("partnership" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
+        if not ((f1.themes & f2.themes) & {"partnership", "security_safety"} or len(f1.entities & f2.entities) >= 2):
+            clash_penalty += 0.40
 
     # Layered Score Aggregation
     score = jaccard
@@ -200,7 +225,14 @@ def calculate_event_similarity(
     if len(shared_entities) >= 2:
         score += 0.30
     elif len(shared_entities) == 1:
-        if (f1.actions & f2.actions) or (f1.themes & f2.themes) or (f1.models & f2.models):
+        has_shared_action_or_theme = bool(
+            (f1.actions & f2.actions)
+            or (f1.themes & f2.themes)
+            or (f1.models & f2.models)
+            or ((f1.themes | f2.themes) <= {"model_release", "benchmarking"} and (f1.themes or f2.themes))
+            or jaccard >= 0.20
+        )
+        if has_shared_action_or_theme:
             score += 0.25
         else:
             # Merely mentioning the same company with completely unrelated actions/themes
@@ -213,6 +245,9 @@ def calculate_event_similarity(
     # Themes bonus
     if f1.themes and f2.themes and not f1.themes.isdisjoint(f2.themes):
         score += 0.15
+    elif (f1.themes | f2.themes) <= {"model_release", "benchmarking"} and (f1.themes and f2.themes):
+        # Benchmarking coverage of a new model release
+        score += 0.10
 
     # Actions bonus
     if f1.actions and f2.actions and not f1.actions.isdisjoint(f2.actions):
@@ -610,51 +645,81 @@ def cluster_articles(
     similarity_threshold: float = 0.60,
     window_hours: float = 72.0,
 ) -> tuple[list[Event], list[EventArticle], list[Article]]:
-    """Cluster articles into Events with parent-child relationships and coverage metrics."""
+    """Cluster articles into Events with parent-child relationships, chaining safeguards, and coverage metrics."""
     if not articles:
         return [], [], []
 
     features = [extract_clustering_features(a) for a in articles]
     n = len(articles)
 
-    # Disjoint-set forest for connected components
-    parent = list(range(n))
+    # Deterministic sorting order: Official first, then highest priority_score/score, oldest published_at, then article_id/url
+    def sort_key(idx: int) -> tuple[int, float, str, str]:
+        a = articles[idx]
+        off = 1 if (a.is_official or a.source_type == "official") else 0
+        p_score = a.priority_score or a.score or 0.0
+        pub = a.published_at.isoformat() if a.published_at else ""
+        uid = a.article_id or a.url or ""
+        return (off, p_score, pub, uid)
 
-    def find(i: int) -> int:
-        if parent[i] == i:
-            return i
-        parent[i] = find(parent[i])
-        return parent[i]
+    sorted_indices = sorted(range(n), key=sort_key, reverse=True)
 
-    def union(i: int, j: int) -> None:
-        root_i = find(i)
-        root_j = find(j)
-        if root_i != root_j:
-            parent[root_j] = root_i
+    # Form clusters with single-linkage chaining safeguard:
+    # A candidate article joins a cluster only if:
+    # 1. Similarity to cluster leader >= similarity_threshold
+    # 2. Similarity to ALL existing cluster members >= min_cohesion_threshold (no hard-negatives or action clashes)
+    clusters: list[list[int]] = []
+    min_cohesion_threshold = similarity_threshold * 0.65  # e.g. 0.39 for 0.60 threshold
 
-    for i in range(n):
-        for j in range(i + 1, n):
-            sim = calculate_event_similarity(
-                articles[i],
-                articles[j],
+    for idx in sorted_indices:
+        best_cluster_idx = -1
+        best_avg_sim = -1.0
+
+        for c_idx, cluster in enumerate(clusters):
+            leader_idx = cluster[0]
+            sim_to_leader = calculate_event_similarity(
+                articles[idx],
+                articles[leader_idx],
                 window_hours=window_hours,
-                f1=features[i],
-                f2=features[j],
+                f1=features[idx],
+                f2=features[leader_idx],
             )
-            if sim >= similarity_threshold:
-                union(i, j)
 
-    # Group into clusters
-    clusters: dict[int, list[int]] = {}
-    for idx in range(n):
-        root = find(idx)
-        clusters.setdefault(root, []).append(idx)
+            if sim_to_leader < similarity_threshold:
+                continue
+
+            # Verify cohesion with all existing members of this cluster
+            all_compatible = True
+            sim_sum = 0.0
+
+            for member_idx in cluster:
+                member_sim = calculate_event_similarity(
+                    articles[idx],
+                    articles[member_idx],
+                    window_hours=window_hours,
+                    f1=features[idx],
+                    f2=features[member_idx],
+                )
+                if member_sim < min_cohesion_threshold or member_sim <= 0.0:
+                    all_compatible = False
+                    break
+                sim_sum += member_sim
+
+            if all_compatible:
+                avg_sim = sim_sum / len(cluster)
+                if avg_sim > best_avg_sim:
+                    best_avg_sim = avg_sim
+                    best_cluster_idx = c_idx
+
+        if best_cluster_idx >= 0:
+            clusters[best_cluster_idx].append(idx)
+        else:
+            clusters.append([idx])
 
     events: list[Event] = []
     event_articles: list[EventArticle] = []
     updated_articles: list[Article] = []
 
-    for cluster_indices in clusters.values():
+    for cluster_indices in clusters:
         cluster_items = [articles[idx] for idx in cluster_indices]
         primary = select_primary_article(cluster_items)
 
