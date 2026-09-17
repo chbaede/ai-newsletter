@@ -918,3 +918,196 @@ def test_source_metrics_discovery_only():
     assert ev.verification_status == "discovery_only"
 
 
+# ── STEP 8.8 Regression Tests: Confidence Calibration & Evidence Quality ──────
+
+
+def test_step88_primary_announcement_only_confidence_ceiling():
+    """1. Primary announcement only: High authority primary lab is capped at Medium confidence (score <= 68.0)."""
+    articles = [
+        make_article(
+            "OpenAI announces GPT-5 frontier AI system",
+            "https://openai.com/blog/gpt-5",
+            publisher="OpenAI",
+            evidence_level="primary",
+            source_type="official",
+            is_primary_source=True,
+        )
+    ]
+    # Set high authority on article
+    articles[0].authority_score = 98.0
+    articles[0].content = "Detailed technical specifications and release notes for GPT-5."
+
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+
+    assert ev.verification_status == VERIFICATION_STATUS_PRIMARY_ONLY
+    assert conf.confidence_label == CONFIDENCE_LABEL_MEDIUM
+    assert conf.label_ko == CONFIDENCE_LABEL_MEDIUM_KO
+    assert conf.confidence_score <= 68.0
+    assert "Openai primary announcement" in conf.explanation_en
+    assert "Openai 공식 발표" in conf.explanation_ko
+
+
+def test_step88_primary_plus_independent_source():
+    """2. Primary announcement + independent reporting -> High confidence."""
+    articles = [
+        make_article(
+            "OpenAI announces GPT-5",
+            "https://openai.com/blog/gpt-5",
+            publisher="OpenAI",
+            evidence_level="primary",
+            source_type="official",
+            is_primary_source=True,
+        ),
+        make_article(
+            "OpenAI launches GPT-5 multimodal model",
+            "https://reuters.com/tech/openai-gpt5",
+            publisher="Reuters",
+            evidence_level="independent",
+            source_type="media",
+            is_independent_source=True,
+        ),
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+
+    assert ev.verification_status == VERIFICATION_STATUS_INDEPENDENTLY_REPORTED
+    assert conf.confidence_label == CONFIDENCE_LABEL_HIGH
+    assert conf.confidence_score >= 70.0
+    assert "Openai primary announcement" in conf.explanation_en
+    assert "independent Reuters reporting" in conf.explanation_en
+
+
+def test_step88_multiple_articles_same_publisher_vs_diversity():
+    """3. 5 articles from Reuters vs Reuters + Bloomberg: Distinct diversity semantics."""
+    # 5 articles from Reuters
+    reuters_5 = [
+        make_article(f"Reuters report part {i}", f"https://reuters.com/p{i}", publisher="Reuters Technology", evidence_level="independent", is_independent_source=True)
+        for i in range(5)
+    ]
+    ev_reuters = compute_event_evidence(reuters_5)
+    conf_reuters = compute_event_confidence(ev_reuters, reuters_5)
+
+    assert len(ev_reuters.independent_sources) == 1
+    assert ev_reuters.evidence_diversity == 1
+    assert ev_reuters.verification_status == VERIFICATION_STATUS_INDEPENDENTLY_REPORTED
+    # Score must NOT get the extra independent multiplier
+    assert conf_reuters.confidence_score < 85.0
+
+    # Reuters + Bloomberg (2 distinct independent publishers)
+    two_pubs = [
+        make_article("Reuters report", "https://reuters.com/p1", publisher="Reuters", evidence_level="independent", is_independent_source=True),
+        make_article("Bloomberg report", "https://bloomberg.com/p1", publisher="Bloomberg", evidence_level="independent", is_independent_source=True),
+    ]
+    ev_two = compute_event_evidence(two_pubs)
+    conf_two = compute_event_confidence(ev_two, two_pubs)
+
+    assert len(ev_two.independent_sources) == 2
+    assert ev_two.evidence_diversity == 2
+    assert ev_two.verification_status == VERIFICATION_STATUS_MULTI_SOURCE
+    assert conf_two.confidence_score >= 85.0
+    assert conf_two.confidence_score > conf_reuters.confidence_score
+
+
+def test_step88_multiple_independent_publishers():
+    """4. Multiple independent publishers: Reuters + Bloomberg + Financial Times -> High confidence with diversity boost."""
+    articles = [
+        make_article("Reuters piece", "https://reuters.com/1", publisher="Reuters", evidence_level="independent", is_independent_source=True),
+        make_article("Bloomberg piece", "https://bloomberg.com/1", publisher="Bloomberg", evidence_level="independent", is_independent_source=True),
+        make_article("FT piece", "https://ft.com/1", publisher="Financial Times", evidence_level="independent", is_independent_source=True),
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+
+    assert len(ev.independent_sources) == 3
+    assert ev.verification_status == VERIFICATION_STATUS_MULTI_SOURCE
+    assert conf.confidence_label == CONFIDENCE_LABEL_HIGH
+    assert conf.confidence_score >= 90.0
+    assert "independent" in conf.explanation_en.lower()
+
+
+def test_step88_regulatory_evidence():
+    """5. Regulatory evidence (FTC/EU) provides strong verification boost."""
+    articles = [
+        make_article(
+            "FTC opens inquiry into generative AI investments",
+            "https://ftc.gov/press-release/ai-inquiry",
+            publisher="US FTC",
+            evidence_level="primary",
+            source_type="regulator",
+            is_primary_source=True,
+        )
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+
+    assert ev.verification_status == VERIFICATION_STATUS_PRIMARY_ONLY
+    assert "regulatory source" in conf.explanation_en
+    assert "규제기관 발표" in conf.explanation_ko
+    assert conf.confidence_score >= 70.0  # Base 58 + 12 regulatory = 70.0 (High)
+
+
+def test_step88_research_evidence():
+    """6. Research evidence from arXiv / academic lab."""
+    articles = [
+        make_article(
+            "DeepSeek-R1 Technical Report",
+            "https://arxiv.org/abs/2609.99999",
+            publisher="arXiv",
+            evidence_level="research",
+            source_type="research",
+        )
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+
+    assert ev.verification_status == VERIFICATION_STATUS_PRIMARY_ONLY
+    assert conf.confidence_label == CONFIDENCE_LABEL_MEDIUM
+    assert "research publication" in conf.explanation_en
+    assert "연구기관 발표 기반" in conf.explanation_ko
+
+
+def test_step88_discovery_only_source():
+    """7. Discovery-only source (Google News) is capped in Low confidence."""
+    articles = [
+        make_article(
+            "AI Startup raises $50M - Google News Search",
+            "https://news.google.com/rss/articles/123",
+            publisher="Google News",
+            evidence_level="discovery",
+            source_type="aggregator",
+            is_discovery_source=True,
+        )
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+
+    assert ev.verification_status == VERIFICATION_STATUS_DISCOVERY_ONLY
+    assert conf.confidence_label == CONFIDENCE_LABEL_LOW
+    assert conf.confidence_score < 30.0
+    assert "Only discovered through an aggregator" in conf.explanation_en
+    assert "검색 집계 결과만 확인됨" in conf.explanation_ko
+
+
+def test_step88_insufficient_evidence():
+    """8. Insufficient evidence (community / unknown source) remains Low confidence without contradiction."""
+    articles = [
+        make_article(
+            "Rumors on forum",
+            "https://forum.example.com/topic/1",
+            publisher="Unknown Forum",
+            evidence_level="community",
+            source_type="community",
+        )
+    ]
+    ev = compute_event_evidence(articles)
+    conf = compute_event_confidence(ev, articles)
+
+    assert ev.verification_status == VERIFICATION_STATUS_INSUFFICIENT
+    assert conf.confidence_label == CONFIDENCE_LABEL_LOW
+    assert conf.confidence_score <= 20.0
+    assert "Insufficient evidence" in conf.explanation_en
+    assert "충분한 출처 없음" in conf.explanation_ko
+
+
+

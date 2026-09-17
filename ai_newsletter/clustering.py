@@ -688,6 +688,20 @@ def compute_event_confidence(
     ):
         score -= 5.0
 
+    # Evidence Quality Ceiling Guards:
+    # 1. Primary-only announcements (without independent reporting or regulatory confirmation)
+    #    must not exceed Medium confidence (_THRESHOLD_HIGH - 2.0 = 68.0 max).
+    if status == VERIFICATION_STATUS_PRIMARY_ONLY and not has_regulatory:
+        score = min(score, _THRESHOLD_HIGH - 2.0)
+
+    # 2. Discovery-only events must stay in Low confidence (< _THRESHOLD_MEDIUM)
+    if status == VERIFICATION_STATUS_DISCOVERY_ONLY:
+        score = min(score, _THRESHOLD_MEDIUM - 5.0)
+
+    # 3. Insufficient evidence must stay very low (< 25.0)
+    if status == VERIFICATION_STATUS_INSUFFICIENT:
+        score = min(score, 20.0)
+
     score = round(max(0.0, min(100.0, score)), 1)
 
     # Label
