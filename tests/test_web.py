@@ -85,3 +85,165 @@ def test_default_port_and_env_override(monkeypatch):
     assert s2.port == 8888
 
 
+# ── Hardened Admin Auth & Health Endpoint Tests ───────────────────────────────
+
+
+def test_admin_auth_configured_with_correct_key(tmp_path):
+    """1. ADMIN_KEY configured + correct key allows admin access via header or bearer token."""
+    store = NewsletterStore(tmp_path / "auth1.db")
+    settings = Settings(db_path=tmp_path / "auth1.db", admin_key="secret123", app_env="production")
+    app = create_app(store=store, settings=settings)
+    c = TestClient(app)
+
+    # Via X-Admin-Key header
+    res_hdr = c.get("/api/admin/verify", headers={"X-Admin-Key": "secret123"})
+    assert res_hdr.status_code == 200
+    assert res_hdr.json() == {"ok": True, "admin": True}
+
+    res_mail = c.get("/api/mail-settings", headers={"X-Admin-Key": "secret123"})
+    assert res_mail.status_code == 200
+
+    # Via Authorization: Bearer token
+    res_bearer = c.get("/api/admin/verify", headers={"Authorization": "Bearer secret123"})
+    assert res_bearer.status_code == 200
+    assert res_bearer.json() == {"ok": True, "admin": True}
+
+
+def test_admin_auth_configured_with_incorrect_key(tmp_path):
+    """2. ADMIN_KEY configured + incorrect key rejects access."""
+    store = NewsletterStore(tmp_path / "auth2.db")
+    settings = Settings(db_path=tmp_path / "auth2.db", admin_key="secret123", app_env="production")
+    app = create_app(store=store, settings=settings)
+    c = TestClient(app)
+
+    res = c.get("/api/admin/verify", headers={"X-Admin-Key": "wrong_password"})
+    assert res.status_code == 200
+    assert res.json() == {"ok": True, "admin": False}
+
+    res_mail = c.get("/api/mail-settings", headers={"X-Admin-Key": "wrong_password"})
+    assert res_mail.status_code == 401
+    assert res_mail.json()["ok"] is False
+
+    res_post = c.post("/api/collect", headers={"X-Admin-Key": "wrong_password"})
+    assert res_post.status_code == 401
+
+
+def test_admin_auth_configured_with_missing_key(tmp_path):
+    """3. ADMIN_KEY configured + missing key rejects access."""
+    store = NewsletterStore(tmp_path / "auth3.db")
+    settings = Settings(db_path=tmp_path / "auth3.db", admin_key="secret123", app_env="production")
+    app = create_app(store=store, settings=settings)
+    c = TestClient(app)
+
+    res = c.get("/api/admin/verify")
+    assert res.status_code == 200
+    assert res.json() == {"ok": True, "admin": False}
+
+    res_mail = c.get("/api/mail-settings")
+    assert res_mail.status_code == 401
+
+    res_health = c.get("/api/sources/health")
+    assert res_health.status_code == 401
+
+
+def test_admin_auth_production_missing_key_fails_closed(tmp_path):
+    """4. Production configuration + missing ADMIN_KEY fails closed (admin endpoints unauthorized)."""
+    store = NewsletterStore(tmp_path / "auth4.db")
+    settings = Settings(db_path=tmp_path / "auth4.db", admin_key=None, app_env="production", allow_anonymous_admin=False)
+    app = create_app(store=store, settings=settings)
+    c = TestClient(app)
+
+    # verify endpoint
+    res_verify = c.get("/api/admin/verify")
+    assert res_verify.status_code == 200
+    assert res_verify.json() == {"ok": True, "admin": False}
+
+    # admin endpoints fail closed
+    assert c.get("/api/mail-settings").status_code == 401
+    assert c.post("/api/mail-settings", json={"smtp_host": "example.com"}).status_code == 401
+    assert c.post("/api/collect").status_code == 401
+    assert c.post("/api/issues/2026-09-17/send").status_code == 401
+    assert c.get("/api/sources/health").status_code == 401
+
+
+def test_admin_auth_development_test_configuration(tmp_path):
+    """5. Development/test configuration with allow_anonymous_admin=True permits unauthenticated admin access."""
+    store = NewsletterStore(tmp_path / "auth5.db")
+    settings = Settings(db_path=tmp_path / "auth5.db", admin_key=None, app_env="development", allow_anonymous_admin=True)
+    app = create_app(store=store, settings=settings)
+    c = TestClient(app)
+
+    res_verify = c.get("/api/admin/verify")
+    assert res_verify.status_code == 200
+    assert res_verify.json() == {"ok": True, "admin": True}
+
+    res_mail = c.get("/api/mail-settings")
+    assert res_mail.status_code == 200
+
+
+def test_health_check_healthy_database(tmp_path):
+    """6. Healthy database returns status 200, status=healthy, and latest issue info."""
+    store = NewsletterStore(tmp_path / "health_ok.db")
+    settings = Settings(db_path=tmp_path / "health_ok.db")
+    article = Article(
+        title="Sample News",
+        url="https://example.com/1",
+        source="TechNews",
+        category="frontier_models",
+        summary_ko="샘플 기사입니다.",
+    )
+    store.save_issue(NewsletterIssue(issue_date="2026-09-17", articles=[article]))
+    app = create_app(store=store, settings=settings)
+    c = TestClient(app)
+
+    res = c.get("/api/health")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "healthy"
+    assert data["database"] == "ok"
+    assert data["latest_issue_date"] == "2026-09-17"
+    assert data["articles_count"] == 1
+
+
+def test_health_check_database_failure_and_degraded_conditions(tmp_path):
+    """7. Database failure returns 503 / unhealthy, and missing tables return degraded."""
+    import sqlite3
+
+    # Degraded condition: database missing required table
+    degraded_db = tmp_path / "degraded.db"
+    conn = sqlite3.connect(str(degraded_db))
+    conn.execute("create table schema_version (version integer primary key);")
+    conn.execute("create table issues (id integer primary key);")
+    # articles and events tables are intentionally missing
+    conn.commit()
+    conn.close()
+
+    # Create store bypassing init migration to test degraded state
+    store_deg = object.__new__(NewsletterStore)
+    store_deg.db_path = degraded_db
+    app_deg = create_app(store=store_deg, settings=Settings(db_path=degraded_db))
+    c_deg = TestClient(app_deg)
+
+    res_deg = c_deg.get("/api/health")
+    assert res_deg.status_code == 200
+    data_deg = res_deg.json()
+    assert data_deg["status"] == "degraded"
+    assert data_deg["database"] == "degraded"
+    assert "Missing tables" in data_deg["detail"]
+
+    # Unhealthy condition: database file path is invalid or unopenable directory
+    bad_db_path = tmp_path / "nonexistent_dir" / "cannot_create.db"
+    store_bad = object.__new__(NewsletterStore)
+    store_bad.db_path = bad_db_path
+    app_bad = create_app(store=store_bad, settings=Settings(db_path=bad_db_path))
+    c_bad = TestClient(app_bad)
+
+    res_bad = c_bad.get("/api/health")
+    assert res_bad.status_code == 503
+    data_bad = res_bad.json()
+    assert data_bad["status"] == "unhealthy"
+    assert data_bad["database"] == "error"
+    assert data_bad["latest_issue_date"] is None
+
+
+

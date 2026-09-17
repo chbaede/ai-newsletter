@@ -94,7 +94,10 @@ def create_app(store: NewsletterStore | None = None, settings: Settings | None =
 
     def _is_admin(request: Request) -> bool:
         if not settings.admin_key:
-            return True
+            # Fail closed in production. Only permit anonymous access when explicitly configured for dev/test
+            if settings.allow_anonymous_admin:
+                return True
+            return False
         key = request.headers.get("X-Admin-Key")
         if not key:
             auth = request.headers.get("Authorization")
@@ -174,12 +177,9 @@ def create_app(store: NewsletterStore | None = None, settings: Settings | None =
 
     @app.get("/api/health")
     def health_check() -> JSONResponse:
-        latest = store.latest_issue()
-        return JSONResponse({
-            "status": "healthy",
-            "latest_issue_date": latest.issue_date if latest else None,
-            "articles_count": len(latest.articles) if latest else 0,
-        })
+        health_info = store.check_health()
+        status_code = 200 if health_info.get("status") in {"healthy", "degraded"} else 503
+        return JSONResponse(health_info, status_code=status_code)
 
     if settings.enable_daily_scheduler:
         start_daily_scheduler(app, collection_time=settings.daily_collection_time)

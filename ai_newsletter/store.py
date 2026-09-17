@@ -796,3 +796,39 @@ class NewsletterStore:
             ).fetchone()
             return issue_row is not None
 
+    def check_health(self) -> dict[str, Any]:
+        """Verify database connectivity, required schema tables, and latest issue query functionality."""
+        try:
+            with self._connect() as conn:
+                conn.execute("select 1").fetchone()
+                tables_rows = conn.execute(
+                    "select name from sqlite_master where type='table'"
+                ).fetchall()
+                table_names = {r[0] for r in tables_rows}
+                required_tables = {"issues", "articles", "events"}
+                missing = required_tables - table_names
+                if missing:
+                    return {
+                        "status": "degraded",
+                        "database": "degraded",
+                        "detail": f"Missing tables: {', '.join(sorted(missing))}",
+                        "latest_issue_date": None,
+                        "articles_count": 0,
+                    }
+            latest = self.latest_issue()
+            return {
+                "status": "healthy",
+                "database": "ok",
+                "latest_issue_date": latest.issue_date if latest else None,
+                "articles_count": len(latest.articles) if latest else 0,
+            }
+        except Exception as exc:
+            return {
+                "status": "unhealthy",
+                "database": "error",
+                "error": "Database unavailable",
+                "latest_issue_date": None,
+                "articles_count": 0,
+            }
+
+
