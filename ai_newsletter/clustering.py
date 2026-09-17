@@ -153,6 +153,151 @@ def calculate_event_similarity(
     return min(1.0, score)
 
 
+# ── Verification status constants ─────────────────────────────────────────────
+
+VERIFICATION_STATUS_PRIMARY_ONLY = "primary_only"
+VERIFICATION_STATUS_INDEPENDENTLY_REPORTED = "independently_reported"
+VERIFICATION_STATUS_MULTI_SOURCE = "multi_source"
+VERIFICATION_STATUS_DISCOVERY_ONLY = "discovery_only"
+VERIFICATION_STATUS_INSUFFICIENT = "insufficient_evidence"
+
+VALID_VERIFICATION_STATUSES = frozenset({
+    VERIFICATION_STATUS_PRIMARY_ONLY,
+    VERIFICATION_STATUS_INDEPENDENTLY_REPORTED,
+    VERIFICATION_STATUS_MULTI_SOURCE,
+    VERIFICATION_STATUS_DISCOVERY_ONLY,
+    VERIFICATION_STATUS_INSUFFICIENT,
+})
+
+
+def _normalize_publisher(publisher: str) -> str:
+    """Canonical form of a publisher name for deduplication.
+
+    Strips trailing punctuation, lowercases, and removes common suffixes
+    so that 'Reuters', 'Reuters Technology', and 'REUTERS' all map to
+    the same canonical key.
+    """
+    name = publisher.strip().lower()
+    # Remove trailing domain components that appear when publisher is inferred
+    # from a Google News result, e.g. "reuters.com"
+    name = re.sub(r"\.com$|\.net$|\.org$|\.io$", "", name)
+    # Remove common trailing words that don't change the publisher identity
+    for suffix in (" technology", " tech", " news", " media", " newsroom",
+                   " official", " blog", " online", " digital", " ai",
+                   " business", " finance", " magazine", " report"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
+    return name.strip()
+
+
+@dataclass(slots=True)
+class EventEvidence:
+    """Computed evidence metadata for a single event cluster."""
+    # All distinct canonical publisher names in the cluster
+    evidence_sources: list[str]
+    # Canonical publisher names with evidence_level == "primary"
+    primary_sources: list[str]
+    # Canonical publisher names with evidence_level == "independent"
+    independent_sources: list[str]
+    # len(evidence_sources) — 0 means discovery/aggregator only
+    evidence_diversity: int
+    # Derived verification status
+    verification_status: str
+
+
+def compute_event_evidence(articles: list[Article]) -> EventEvidence:
+    """Compute deduplicated evidence metadata for a cluster of articles.
+
+    Key invariant: multiple articles from the same publisher (e.g. two Reuters
+    follow-up pieces, or an OpenAI post + repost) count as ONE evidence source.
+
+    Verification logic
+    ------------------
+    discovery_only:          all articles are is_discovery_source or evidence_level=="discovery"
+    insufficient_evidence:   all articles are community or unknown, no real publishers
+    primary_only:            ≥1 distinct primary publisher, 0 independent publishers
+    independently_reported:  ≥1 primary + ≥1 independent publisher
+    multi_source:            ≥2 independent publishers (with or without primary)
+    """
+    # Bucket articles by canonical publisher name and evidence level.
+    # We use a dict: canonical_publisher -> set of evidence_levels seen from that publisher.
+    publisher_evidence: dict[str, set[str]] = {}
+
+    for a in articles:
+        raw_pub = (a.publisher or a.source or "").strip()
+        if not raw_pub:
+            continue
+        canonical = _normalize_publisher(raw_pub)
+        if not canonical:
+            continue
+        publisher_evidence.setdefault(canonical, set()).add(
+            a.evidence_level or "industry_media"
+        )
+
+    # Separate into evidence-type buckets (per publisher, not per article)
+    primary_pubs: list[str] = []
+    independent_pubs: list[str] = []
+    discovery_pubs: list[str] = []
+    community_pubs: list[str] = []
+    other_pubs: list[str] = []
+
+    for pub, levels in publisher_evidence.items():
+        # A publisher is classified by its *strongest* evidence level.
+        if "primary" in levels:
+            primary_pubs.append(pub)
+        elif "independent" in levels:
+            independent_pubs.append(pub)
+        elif "discovery" in levels:
+            discovery_pubs.append(pub)
+        elif "community" in levels:
+            community_pubs.append(pub)
+        else:
+            other_pubs.append(pub)
+
+    primary_pubs.sort()
+    independent_pubs.sort()
+
+    # All publishers except pure-discovery and community
+    substantive_pubs = sorted(set(primary_pubs) | set(independent_pubs) | set(other_pubs))
+    all_pubs = sorted(publisher_evidence.keys())
+
+    # Determine verification status
+    n_primary = len(primary_pubs)
+    n_independent = len(independent_pubs)
+    n_substantive = len(substantive_pubs)
+    has_only_discovery = bool(discovery_pubs) and n_substantive == 0 and not community_pubs
+    has_only_community = bool(community_pubs) and n_substantive == 0 and not discovery_pubs
+    has_nothing_substantial = n_substantive == 0
+
+    if has_only_discovery:
+        status = VERIFICATION_STATUS_DISCOVERY_ONLY
+    elif has_nothing_substantial:
+        status = VERIFICATION_STATUS_INSUFFICIENT
+    elif n_independent >= 2:
+        # Two or more *different* independent publishers = multi_source
+        status = VERIFICATION_STATUS_MULTI_SOURCE
+    elif n_primary >= 1 and n_independent >= 1:
+        status = VERIFICATION_STATUS_INDEPENDENTLY_REPORTED
+    elif n_primary >= 1:
+        status = VERIFICATION_STATUS_PRIMARY_ONLY
+    elif n_independent == 1:
+        # Single independent, no primary — treat as independently_reported
+        status = VERIFICATION_STATUS_INDEPENDENTLY_REPORTED
+    else:
+        status = VERIFICATION_STATUS_INSUFFICIENT
+
+    evidence_diversity = len(substantive_pubs)
+
+    return EventEvidence(
+        evidence_sources=all_pubs,
+        primary_sources=primary_pubs,
+        independent_sources=independent_pubs,
+        evidence_diversity=evidence_diversity,
+        verification_status=status,
+    )
+
+
 def cluster_articles(
     articles: list[Article],
     similarity_threshold: float = 0.60,
@@ -210,6 +355,7 @@ def cluster_articles(
         ev_id = f"ev_{hashlib.sha256(primary.url.encode()).hexdigest()[:16]}"
         event_title = primary.title
 
+        # Legacy publisher set (raw, for backward-compat source_count fields)
         publishers = {a.publisher or a.source for a in cluster_items if (a.publisher or a.source)}
         has_official = any(a.is_official or a.source_type == "official" for a in cluster_items)
         has_reg = any(a.source_type == "regulator" for a in cluster_items)
@@ -222,6 +368,9 @@ def cluster_articles(
                 official_url = a.url
                 official_name = a.publisher or a.source
                 break
+
+        # Compute deduplicated evidence metadata
+        ev_evidence = compute_event_evidence(cluster_items)
 
         event = Event(
             event_id=ev_id,
@@ -237,6 +386,12 @@ def cluster_articles(
             official_source_url=official_url,
             official_source_name=official_name,
             related_sources=sorted(publishers),
+            # Evidence metadata
+            evidence_sources=ev_evidence.evidence_sources,
+            primary_sources=ev_evidence.primary_sources,
+            independent_sources=ev_evidence.independent_sources,
+            evidence_diversity=ev_evidence.evidence_diversity,
+            verification_status=ev_evidence.verification_status,
         )
         events.append(event)
 

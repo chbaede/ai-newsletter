@@ -204,6 +204,22 @@ class Event:
     reference_source_name: str | None = None
     related_sources: list[str] = field(default_factory=list)
 
+    # ── Evidence metadata ─────────────────────────────────────────────────
+    # Deduplicated list of distinct publisher names contributing to this event.
+    # Multiple articles from the same publisher count as ONE evidence source.
+    evidence_sources: list[str] = field(default_factory=list)
+    # Publishers whose evidence_level == "primary"
+    primary_sources: list[str] = field(default_factory=list)
+    # Publishers whose evidence_level == "independent"
+    independent_sources: list[str] = field(default_factory=list)
+    # Number of distinct publishers (deduplicated).
+    # 0 = discovery/aggregator only.
+    evidence_diversity: int = 0
+    # Verification status string.
+    # Values: "primary_only" | "independently_reported" | "multi_source" |
+    #         "discovery_only" | "insufficient_evidence"
+    verification_status: str = "insufficient_evidence"
+
     def __post_init__(self) -> None:
         if self.created_at is None:
             self.created_at = datetime.now(timezone.utc)

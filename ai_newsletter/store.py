@@ -122,10 +122,29 @@ class NewsletterStore:
                     official_source_url text,
                     official_source_name text,
                     reference_source_name text,
-                    related_sources text not null default '[]'
+                    related_sources text not null default '[]',
+                    evidence_sources text not null default '[]',
+                    primary_sources text not null default '[]',
+                    independent_sources text not null default '[]',
+                    evidence_diversity integer not null default 0,
+                    verification_status text not null default 'insufficient_evidence'
                 )
                 """
             )
+            # Migration: add new evidence columns to existing tables
+            event_cols = [r[1] for r in conn.execute("pragma table_info(events)").fetchall()]
+            for col, default in [
+                ("evidence_sources", "'[]'"),
+                ("primary_sources", "'[]'"),
+                ("independent_sources", "'[]'"),
+                ("evidence_diversity", "0"),
+                ("verification_status", "'insufficient_evidence'"),
+            ]:
+                if col not in event_cols:
+                    conn.execute(
+                        f"alter table events add column {col} text not null default {default}"
+                    )
+
             conn.execute(
                 """
                 create table if not exists event_articles (
@@ -324,9 +343,11 @@ class NewsletterStore:
                         created_at, source_count, independent_source_count,
                         has_official_source, has_regulatory_source, has_major_media_source,
                         official_source_url, official_source_name, reference_source_name,
-                        related_sources
+                        related_sources,
+                        evidence_sources, primary_sources, independent_sources,
+                        evidence_diversity, verification_status
                     )
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         event.event_id,
@@ -345,8 +366,14 @@ class NewsletterStore:
                         event.official_source_name,
                         event.reference_source_name,
                         json.dumps(event.related_sources, ensure_ascii=False),
+                        json.dumps(event.evidence_sources, ensure_ascii=False),
+                        json.dumps(event.primary_sources, ensure_ascii=False),
+                        json.dumps(event.independent_sources, ensure_ascii=False),
+                        event.evidence_diversity,
+                        event.verification_status,
                     ),
                 )
+
 
             for ea in event_article_list:
                 conn.execute(
@@ -554,12 +581,24 @@ class NewsletterStore:
                 created_at = datetime.fromisoformat(row["created_at"])
             except Exception:
                 pass
+        keys = row.keys() if hasattr(row, "keys") else []
         rel_sources = []
         if row["related_sources"]:
             try:
                 rel_sources = json.loads(row["related_sources"])
             except Exception:
                 pass
+
+        def _load_list(col: str) -> list:
+            if col not in keys:
+                return []
+            raw = row[col]
+            if not raw:
+                return []
+            try:
+                return json.loads(raw)
+            except Exception:
+                return []
 
         return Event(
             event_id=row["event_id"],
@@ -577,7 +616,17 @@ class NewsletterStore:
             official_source_name=row["official_source_name"],
             reference_source_name=row["reference_source_name"],
             related_sources=rel_sources,
+            evidence_sources=_load_list("evidence_sources"),
+            primary_sources=_load_list("primary_sources"),
+            independent_sources=_load_list("independent_sources"),
+            evidence_diversity=row["evidence_diversity"] if "evidence_diversity" in keys else 0,
+            verification_status=(
+                row["verification_status"]
+                if "verification_status" in keys and row["verification_status"]
+                else "insufficient_evidence"
+            ),
         )
+
 
     def acquire_daily_run(
         self,
