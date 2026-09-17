@@ -204,9 +204,16 @@ def test_discovery_source_classification_and_google_news_rule():
     assert gnews_kr.is_discovery_source is True
 
     # Important Design Rule: discovery_method = "google_news" / "search" does NOT make a source "discovery"
+    anthropic_feed = get_source("anthropic_news")
+    assert anthropic_feed is not None
+    assert anthropic_feed.discovery_method == "search"
+    assert anthropic_feed.evidence_level == "primary"
+    assert is_discovery_source(anthropic_feed) is False
+    assert is_primary_source(anthropic_feed) is True
+
     openai_feed = get_source("openai_news")
     assert openai_feed is not None
-    assert openai_feed.discovery_method == "search"
+    assert openai_feed.discovery_method == "rss"
     assert openai_feed.evidence_level == "primary"
     assert is_discovery_source(openai_feed) is False
     assert is_primary_source(openai_feed) is True
@@ -256,5 +263,85 @@ def test_source_catalog_evidence_levels():
             assert feed.is_discovery_source is True
         else:
             assert feed.is_discovery_source is False
+
+
+def test_no_duplicate_source_ids_or_canonical_urls():
+    from ai_newsletter.collector import canonicalize_url
+
+    ids = [f.id for f in SOURCE_CATALOG]
+    assert len(ids) == len(set(ids)), f"Duplicate source IDs found: {[x for x in ids if ids.count(x) > 1]}"
+
+    urls = [canonicalize_url(f.url) for f in SOURCE_CATALOG]
+    assert len(urls) == len(set(urls)), f"Duplicate canonical feed URLs found: {[x for x in urls if urls.count(x) > 1]}"
+
+
+def test_new_primary_and_research_sources_metadata():
+    # Verify new primary sources
+    new_primary_ids = ["mistral_ai", "aws_ml_blog", "apple_ml_research"]
+    for sid in new_primary_ids:
+        feed = get_source(sid)
+        assert feed is not None, f"Missing primary source: {sid}"
+        assert feed.url.startswith("http"), f"Invalid URL for {sid}: {feed.url}"
+        assert feed.evidence_level == "primary"
+        assert feed.is_primary_source is True
+        assert feed.is_independent_source is False, f"Company blog {sid} must NOT be marked independent"
+        assert feed.is_discovery_source is False
+        assert feed.catalog_group == "primary"
+
+    # Verify new research sources
+    new_research_ids = ["bair_blog", "google_research", "ibm_research"]
+    for sid in new_research_ids:
+        feed = get_source(sid)
+        assert feed is not None, f"Missing research source: {sid}"
+        assert feed.url.startswith("http"), f"Invalid URL for {sid}: {feed.url}"
+        assert feed.evidence_level == "research"
+        assert feed.is_primary_source is False
+        assert feed.is_independent_source is False
+        assert feed.is_discovery_source is False
+        assert feed.catalog_group == "research"
+
+
+def test_company_blogs_never_marked_independent():
+    company_blog_ids = [
+        "openai_news",
+        "anthropic_news",
+        "deepmind_blog",
+        "meta_ai_blog",
+        "microsoft_ai",
+        "nvidia_news",
+        "mistral_ai",
+        "huggingface_blog",
+        "aws_ml_blog",
+        "apple_ml_research",
+    ]
+    for sid in company_blog_ids:
+        feed = get_source(sid)
+        assert feed is not None
+        assert feed.is_primary_source is True
+        assert feed.is_independent_source is False, f"{sid} should NOT be independent"
+
+
+def test_feed_health_for_new_sources():
+    from ai_newsletter.collector import check_feed_health
+
+    new_source_ids = [
+        "openai_news",
+        "deepmind_blog",
+        "meta_ai_blog",
+        "nvidia_news",
+        "mistral_ai",
+        "aws_ml_blog",
+        "apple_ml_research",
+        "bair_blog",
+        "google_research",
+        "ibm_research",
+    ]
+    new_feeds = [get_source(sid) for sid in new_source_ids if get_source(sid)]
+    assert len(new_feeds) == len(new_source_ids)
+
+    health_results = check_feed_health(new_feeds)
+    for res in health_results:
+        assert res["status"] == "ok", f"Feed {res['id']} failed health check: {res['error']}"
+        assert res["entries_count"] > 0, f"Feed {res['id']} returned 0 entries"
 
 

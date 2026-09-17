@@ -78,19 +78,24 @@ KNOWN_PUBLISHER_AUTHORITY: dict[str, int] = {
     "anthropic": 95,
     "google deepmind": 95,
     "deepmind": 95,
+    "google research": 95,
     "meta ai": 90,
     "microsoft": 90,
     "nvidia": 95,
     "hugging face": 90,
     "mistral ai": 90,
+    "mistral": 90,
     "aws": 85,
     "apple": 90,
+    "ibm research": 90,
+    "ibm": 90,
 
     # Research
     "arxiv": 95,
     "stanford hai": 95,
     "mit csail": 95,
     "berkeley bair": 95,
+    "bair": 95,
     "papers with code": 90,
 
     # Global Tech & AI Media
@@ -200,13 +205,13 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         id="openai_news",
         name="OpenAI Newsroom",
         bucket="frontier_models",
-        url=google_news_rss('site:openai.com/news OR site:openai.com/index "OpenAI"'),
+        url="https://openai.com/news/rss.xml",
         source_type="official",
         authority_score=95,
         region="us",
         language="en",
         catalog_group="primary",
-        discovery_method="search",
+        discovery_method="rss",
         aliases=("OpenAI", "ChatGPT"),
         evidence_level="primary",
         is_primary_source=True,
@@ -228,15 +233,15 @@ PRIMARY_SOURCES: list[SourceFeed] = [
     ),
     SourceFeed(
         id="deepmind_blog",
-        name="Google DeepMind Discover",
+        name="Google DeepMind Blog",
         bucket="frontier_models",
-        url=google_news_rss('site:deepmind.google/discover/blog OR "Google DeepMind" Gemini'),
+        url="https://deepmind.google/blog/rss.xml",
         source_type="official",
         authority_score=95,
         region="global",
         language="en",
         catalog_group="primary",
-        discovery_method="search",
+        discovery_method="rss",
         aliases=("DeepMind", "Google DeepMind", "Gemini"),
         evidence_level="primary",
         is_primary_source=True,
@@ -245,13 +250,13 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         id="meta_ai_blog",
         name="Meta AI Research Blog",
         bucket="open_source",
-        url=google_news_rss('"Meta AI" "Llama" model announcement OR release'),
+        url="https://engineering.fb.com/category/ai-research/feed/",
         source_type="official",
         authority_score=90,
         region="us",
         language="en",
         catalog_group="primary",
-        discovery_method="search",
+        discovery_method="rss",
         aliases=("Meta AI", "Llama"),
         evidence_level="primary",
         is_primary_source=True,
@@ -275,14 +280,29 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         id="nvidia_news",
         name="NVIDIA News & AI Blog",
         bucket="hardware_infra",
-        url=google_news_rss('site:nvidianews.nvidia.com OR site:blogs.nvidia.com "AI"'),
+        url="https://blogs.nvidia.com/feed/",
         source_type="official",
         authority_score=95,
         region="us",
         language="en",
         catalog_group="primary",
-        discovery_method="search",
+        discovery_method="rss",
         aliases=("NVIDIA", "Blackwell", "CUDA"),
+        evidence_level="primary",
+        is_primary_source=True,
+    ),
+    SourceFeed(
+        id="mistral_ai",
+        name="Mistral AI Announcements",
+        bucket="frontier_models",
+        url=google_news_rss('site:mistral.ai/news OR site:mistral.ai "Mistral AI"'),
+        source_type="official",
+        authority_score=90,
+        region="europe",
+        language="en",
+        catalog_group="primary",
+        discovery_method="search",
+        aliases=("Mistral AI", "Mistral"),
         evidence_level="primary",
         is_primary_source=True,
     ),
@@ -298,6 +318,36 @@ PRIMARY_SOURCES: list[SourceFeed] = [
         catalog_group="primary",
         discovery_method="rss",
         aliases=("Hugging Face", "HF"),
+        evidence_level="primary",
+        is_primary_source=True,
+    ),
+    SourceFeed(
+        id="aws_ml_blog",
+        name="AWS Machine Learning Blog",
+        bucket="enterprise_app",
+        url="https://aws.amazon.com/blogs/machine-learning/feed/",
+        source_type="official",
+        authority_score=85,
+        region="us",
+        language="en",
+        catalog_group="primary",
+        discovery_method="rss",
+        aliases=("AWS ML", "Amazon Web Services AI"),
+        evidence_level="primary",
+        is_primary_source=True,
+    ),
+    SourceFeed(
+        id="apple_ml_research",
+        name="Apple Machine Learning Research",
+        bucket="research_breakthroughs",
+        url="https://machinelearning.apple.com/rss.xml",
+        source_type="official",
+        authority_score=90,
+        region="us",
+        language="en",
+        catalog_group="primary",
+        discovery_method="rss",
+        aliases=("Apple ML", "Apple Machine Learning"),
         evidence_level="primary",
         is_primary_source=True,
     ),
@@ -358,6 +408,48 @@ RESEARCH_SOURCES: list[SourceFeed] = [
         catalog_group="research",
         discovery_method="search",
         aliases=("MIT CSAIL",),
+        evidence_level="research",
+    ),
+    SourceFeed(
+        id="bair_blog",
+        name="Berkeley AI Research (BAIR)",
+        bucket="research_breakthroughs",
+        url=google_news_rss('site:bair.berkeley.edu/blog OR "Berkeley AI Research"'),
+        source_type="research",
+        authority_score=95,
+        region="us",
+        language="en",
+        catalog_group="research",
+        discovery_method="search",
+        aliases=("BAIR", "Berkeley AI Research"),
+        evidence_level="research",
+    ),
+    SourceFeed(
+        id="google_research",
+        name="Google Research Blog",
+        bucket="research_breakthroughs",
+        url="https://research.google/blog/rss/",
+        source_type="research",
+        authority_score=95,
+        region="global",
+        language="en",
+        catalog_group="research",
+        discovery_method="rss",
+        aliases=("Google Research",),
+        evidence_level="research",
+    ),
+    SourceFeed(
+        id="ibm_research",
+        name="IBM Research AI",
+        bucket="research_breakthroughs",
+        url=google_news_rss('site:research.ibm.com/blog OR "IBM Research" AI'),
+        source_type="research",
+        authority_score=90,
+        region="us",
+        language="en",
+        catalog_group="research",
+        discovery_method="search",
+        aliases=("IBM Research", "IBM AI"),
         evidence_level="research",
     ),
 ]
@@ -653,9 +745,9 @@ def classify_source_type(source_name: str) -> str:
     name_clean = source_name.lower()
     if any(k in name_clean for k in ["nist", "office", "commission", "과기정통부", "위원회"]):
         return "regulator"
-    if any(k in name_clean for k in ["arxiv", "hai", "csail", "bair"]):
+    if any(k in name_clean for k in ["arxiv", "hai", "csail", "bair", "google research", "ibm research"]):
         return "research"
-    if any(k in name_clean for k in ["openai", "anthropic", "deepmind", "nvidia", "meta"]):
+    if any(k in name_clean for k in ["openai", "anthropic", "deepmind", "nvidia", "meta", "mistral", "aws", "apple"]):
         return "official"
     return "media"
 
@@ -691,10 +783,10 @@ def source_evidence_level(source: SourceFeed | Any | str | None) -> str:
     if any(ind in clean for ind in ("reuters", "bloomberg", "financial times", "the information", "mit technology review", "technology review")):
         return "independent"
     # Check known primary sources (frontier labs, chipmakers, regulators)
-    if any(prim in clean for prim in ("openai", "anthropic", "deepmind", "google deepmind", "nvidia", "meta ai", "european commission", "eu ai office", "nist", "과기정통부", "microsoft ai", "hugging face")):
+    if any(prim in clean for prim in ("openai", "anthropic", "deepmind", "google deepmind", "nvidia", "meta ai", "european commission", "eu ai office", "nist", "과기정통부", "microsoft ai", "hugging face", "mistral", "aws", "apple")):
         return "primary"
     # Check known research repositories & academic labs
-    if any(res in clean for res in ("arxiv", "stanford hai", "mit csail", "bair", "berkeley bair", "papers with code")):
+    if any(res in clean for res in ("arxiv", "stanford hai", "mit csail", "bair", "berkeley bair", "papers with code", "google research", "ibm research")):
         return "research"
     # Check known community
     if any(comm in clean for comm in ("hacker news", "geeknews", "reddit")):

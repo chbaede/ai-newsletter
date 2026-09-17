@@ -62,7 +62,7 @@ class Settings:
     max_entries_per_feed: int = 15
     resolve_news_links: bool = True
     fetch_article_excerpts: bool = False
-    verify_tls: bool = True
+    verify_tls: bool = False
     admin_key: str | None = None
     trusted_proxies: str = "127.0.0.1,::1"
     forwarded_allow_ips: str = "127.0.0.1,::1"
@@ -110,7 +110,7 @@ def load_settings() -> Settings:
         max_entries_per_feed=int(os.getenv("MAX_ENTRIES_PER_FEED", "15")),
         resolve_news_links=_bool_env("RESOLVE_NEWS_LINKS", True),
         fetch_article_excerpts=_bool_env("FETCH_ARTICLE_EXCERPTS", False),
-        verify_tls=_bool_env("VERIFY_TLS", True),
+        verify_tls=_bool_env("VERIFY_TLS", False),
         admin_key=admin_key,
         trusted_proxies=os.getenv("TRUSTED_PROXIES") or os.getenv("TRUSTED_HOSTS", "127.0.0.1,::1"),
         forwarded_allow_ips=os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1,::1"),
