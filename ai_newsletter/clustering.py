@@ -1158,29 +1158,11 @@ def select_primary_article(articles: list[Article]) -> Article:
     return sorted_arts[0]
 
 
-# ── Main Entrypoint ───────────────────────────────────────────────────────────
-
-def cluster_articles(
+def finalize_clusters(
+    clusters: list[list[int]],
     articles: list[Article],
-    similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
-    window_hours: float = DEFAULT_EVENT_WINDOW_HOURS,
 ) -> tuple[list[Event], list[EventArticle], list[Article]]:
-    """Cluster articles into Events with representative anchors, chaining safeguards, and evidence metrics."""
-    if not articles:
-        return [], [], []
-
-    # Extract features once per article to reuse across all compatibility checks
-    features = [extract_clustering_features(a) for a in articles]
-
-    # Assign articles to cohesive clusters
-    clusters = _assign_articles_to_clusters(
-        articles=articles,
-        features=features,
-        similarity_threshold=similarity_threshold,
-        window_hours=window_hours,
-    )
-
-    # Finalize clusters into Event, EventArticle, and updated Article models
+    """Finalize clustered article indices into Event, EventArticle, and updated Article models."""
     events: list[Event] = []
     all_event_articles: list[EventArticle] = []
     all_updated_articles: list[Article] = []
@@ -1192,3 +1174,35 @@ def cluster_articles(
         all_updated_articles.extend(up_arts)
 
     return events, all_event_articles, all_updated_articles
+
+
+# ── Main Entrypoint ───────────────────────────────────────────────────────────
+
+def cluster_articles(
+    articles: list[Article],
+    similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+    window_hours: float = DEFAULT_EVENT_WINDOW_HOURS,
+) -> tuple[list[Event], list[EventArticle], list[Article]]:
+    """Cluster articles into Events with representative anchors, chaining safeguards, and evidence metrics.
+
+    Execution pipeline:
+    1. Extract cached features for each article (feature reuse)
+    2. Sequentially assign articles to cohesive clusters using dynamic anchors and representatives
+    3. Finalize clusters into Events and evidence metadata
+    """
+    if not articles:
+        return [], [], []
+
+    # Step 1: Extract features once per article to reuse across all compatibility checks
+    features = [extract_clustering_features(a) for a in articles]
+
+    # Step 2: Assign articles to cohesive clusters
+    clusters = _assign_articles_to_clusters(
+        articles=articles,
+        features=features,
+        similarity_threshold=similarity_threshold,
+        window_hours=window_hours,
+    )
+
+    # Step 3: Finalize clusters into Event, EventArticle, and updated Article models
+    return finalize_clusters(clusters, articles)
