@@ -909,6 +909,114 @@ def test_step87_test_g_broader_multi_entity_safety_initiative():
     assert "safety" in events[0].title.lower() or "openai" in events[0].title.lower()
 
 
+# ── STEP 8.9 Tests: Determinism & Performance Scaling ──────────────────────────
+
+def test_step89_clustering_determinism():
+    """Verify that repeated clustering runs produce bit-for-bit identical results."""
+    articles = [
+        Article(
+            article_id=f"det_{i}",
+            title=f"OpenAI announces GPT-5 frontier AI release {i}",
+            url=f"https://openai.com/gpt-5-det-{i}",
+            source="OpenAI" if i == 0 else f"Media{i}",
+            publisher="OpenAI" if i == 0 else f"Publisher{i}",
+            is_official=(i == 0),
+            source_type="official" if i == 0 else "media",
+            evidence_level="primary" if i == 0 else "independent",
+            tags=["OpenAI", "GPT-5"],
+        )
+        for i in range(5)
+    ] + [
+        Article(
+            article_id=f"anthropic_{i}",
+            title=f"Anthropic opens new corporate headquarters office in London {i}",
+            url=f"https://anthropic.com/london-{i}",
+            source=f"Source{i}",
+            publisher=f"PublisherAnthropic{i}",
+            category="frontier_models",
+            tags=["Anthropic"],
+        )
+        for i in range(3)
+    ]
+
+    # Run 1
+    events1, ea1, updated1 = cluster_articles(articles)
+
+    # Run 2 with same order
+    events2, ea2, updated2 = cluster_articles(articles)
+
+    # Run 3 with reversed input order (determinism test)
+    events3, ea3, updated3 = cluster_articles(list(reversed(articles)))
+
+    # Verify event counts
+    assert len(events1) == len(events2) == len(events3) == 2
+
+    # Verify event IDs and primary articles match exactly
+    ev_ids_1 = sorted(e.event_id for e in events1)
+    ev_ids_2 = sorted(e.event_id for e in events2)
+    ev_ids_3 = sorted(e.event_id for e in events3)
+    assert ev_ids_1 == ev_ids_2 == ev_ids_3
+
+    # Verify cluster article groupings match
+    grouping_1 = {e.event_id: sorted([a.article_id for a in updated1 if a.event_id == e.event_id]) for e in events1}
+    grouping_2 = {e.event_id: sorted([a.article_id for a in updated2 if a.event_id == e.event_id]) for e in events2}
+    grouping_3 = {e.event_id: sorted([a.article_id for a in updated3 if a.event_id == e.event_id]) for e in events3}
+
+    assert grouping_1 == grouping_2 == grouping_3
+
+
+def test_step89_clustering_performance_scaling():
+    """Verify performance scaling across synthetic datasets of 100, 300, 500, and 1000 articles without abnormal blow-ups."""
+    import time
+
+    def generate_synthetic_articles(count: int) -> list[Article]:
+        topics = [
+            ("OpenAI", "GPT-5", "announces flagship model release and benchmarks"),
+            ("Anthropic", "Claude 3.5 Sonnet", "introduces updated enterprise pricing and rate tiers"),
+            ("Google", "Gemini 2.0", "unveils multimodal capabilities for developers"),
+            ("Meta", "Llama 3.3", "releases open weights foundation model"),
+            ("NVIDIA", "Blackwell B200", "begins volume production and datacenter shipments"),
+            ("Mistral", "Le Chat", "opens new corporate office in London headquarters"),
+            ("Microsoft", "Copilot", "faces European regulatory investigation and antitrust lawsuit"),
+            ("DeepSeek", "DeepSeek R1", "publishes breakthrough reasoning benchmark results"),
+        ]
+        articles = []
+        for i in range(count):
+            topic = topics[i % len(topics)]
+            pub_idx = (i // len(topics))
+            articles.append(
+                Article(
+                    article_id=f"synth_{count}_{i}",
+                    title=f"{topic[0]} {topic[1]} {topic[2]} - variant #{i}",
+                    url=f"https://synthetic-news.example.com/art/{count}/{i}",
+                    source=f"Publisher_{pub_idx}",
+                    publisher=f"Publisher_{pub_idx}",
+                    category="frontier_models",
+                    tags=[topic[0], topic[1]],
+                    excerpt=f"Full coverage of {topic[0]} and {topic[1]} with detail number {i}.",
+                    priority_score=50.0 + (i % 50),
+                )
+            )
+        return articles
+
+    timings = {}
+    for n in [100, 300, 500, 1000]:
+        arts = generate_synthetic_articles(n)
+        start_time = time.perf_counter()
+        events, ea, updated = cluster_articles(arts)
+        elapsed = time.perf_counter() - start_time
+        timings[n] = elapsed
+
+        # Assert correct integrity
+        assert len(updated) == n
+        assert len(events) >= 1
+        assert len(ea) == n
+
+    # Log / print timings for inspection and ensure 1000 articles cluster in reasonable time (< 15s)
+    assert timings[1000] < 15.0, f"Clustering 1000 articles took too long: {timings[1000]:.2f}s"
+
+
+
 
 
 

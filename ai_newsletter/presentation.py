@@ -519,9 +519,25 @@ def prepare_article_view(article: Article) -> ArticleView:
 
 
 
-def build_intelligence_sections(issue: NewsletterIssue, lang: str = "ko") -> list[dict[str, Any]]:
+def build_intelligence_sections(
+    issue: NewsletterIssue,
+    lang: str = "ko",
+    min_score: float = 45.0,
+    max_per_section: int = 9,
+) -> list[dict[str, Any]]:
     is_en = lang == "en"
-    articles = issue.articles
+    raw_articles = issue.articles
+
+    # Filter out low-scoring/watch articles when scores are present
+    has_scores = any((a.priority_score or a.score or 0) > 0 for a in raw_articles)
+    if has_scores:
+        qualified = [a for a in raw_articles if (a.priority_score or a.score or 0) >= min_score]
+        if len(qualified) < 3:
+            qualified = [a for a in raw_articles if (a.priority_score or a.score or 0) >= 30.0]
+        articles = qualified if qualified else raw_articles
+    else:
+        articles = raw_articles
+
     sections = []
     assigned_ids = set()
 
@@ -531,7 +547,8 @@ def build_intelligence_sections(issue: NewsletterIssue, lang: str = "ko") -> lis
             if (a.primary_category in defn["categories"] or a.category in defn["categories"])
             and a.article_id not in assigned_ids
         ]
-        sec_articles.sort(key=lambda a: a.priority_score, reverse=True)
+        sec_articles.sort(key=lambda a: a.priority_score or a.score or 0.0, reverse=True)
+        sec_articles = sec_articles[:max_per_section]
         for a in sec_articles:
             assigned_ids.add(a.article_id)
 
@@ -549,8 +566,9 @@ def build_intelligence_sections(issue: NewsletterIssue, lang: str = "ko") -> lis
 
     leftovers = [a for a in articles if a.article_id not in assigned_ids]
     if leftovers and sections:
-        sections[0]["articles"].extend(leftovers)
-        sections[0]["articles"].sort(key=lambda a: a.priority_score, reverse=True)
+        sections[0]["articles"].extend(leftovers[:max_per_section])
+        sections[0]["articles"].sort(key=lambda a: a.priority_score or a.score or 0.0, reverse=True)
+        sections[0]["articles"] = sections[0]["articles"][:max_per_section]
         sections[0]["article_views"] = [prepare_article_view(a) for a in sections[0]["articles"]]
 
     return sections

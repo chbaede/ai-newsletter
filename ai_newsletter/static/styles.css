@@ -646,13 +646,20 @@ html.dark-mode .filter-pill.active {
   font-weight: 600;
 }
 
-/* ── Article Grid & Multi-Column Layout ──────────────────────────────────── */
+/* ── Article Grid & Multi-Column Layout (3 columns on desktop) ──────────────── */
 .card-grid,
 .article-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
   align-items: stretch;
+}
+
+@media (max-width: 1200px) {
+  .card-grid,
+  .article-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* ── Article Card: Elevated, Crisp & Readable ────────────────────────────── */

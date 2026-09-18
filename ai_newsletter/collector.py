@@ -21,12 +21,14 @@ from .logging import logger
 from .models import Article, CollectionMetrics, FeedEntry, NewsletterIssue
 from .sources import (
     DEFAULT_FEEDS,
+    KNOWN_PUBLISHER_AUTHORITY,
     SECTION_ORDER,
     SourceFeed,
     classify_source_type,
     get_enabled_sources,
     get_source,
     source_authority,
+    source_evidence_level,
     source_metadata,
 )
 from .store import NewsletterStore
@@ -161,6 +163,22 @@ def parse_feed_entry(entry: dict, source_feed: SourceFeed) -> FeedEntry | None:
         if len(parts) == 2 and len(parts[1].strip()) <= 40:
             publisher = parts[1].strip()
 
+    evidence_level = source_feed.evidence_level
+    source_type = source_feed.source_type
+    authority_score = source_feed.authority_score
+
+    if publisher and publisher != source_feed.name:
+        pub_level = source_evidence_level(publisher)
+        if source_feed.evidence_level == "discovery" or pub_level in ("primary", "independent", "research"):
+            evidence_level = pub_level
+        canonical_pub = publisher.strip().lower()
+        if canonical_pub in KNOWN_PUBLISHER_AUTHORITY:
+            authority_score = KNOWN_PUBLISHER_AUTHORITY[canonical_pub]
+
+    is_primary = (evidence_level == "primary")
+    is_independent = (evidence_level == "independent")
+    is_discovery = (evidence_level == "discovery")
+
     return FeedEntry(
         title=title,
         url=link,
@@ -171,15 +189,15 @@ def parse_feed_entry(entry: dict, source_feed: SourceFeed) -> FeedEntry | None:
         discovered_via=source_feed.id,
         publisher=publisher,
         source_id=source_feed.id,
-        authority_score=source_feed.authority_score,
-        source_type=source_feed.source_type,
-        source_authority=source_feed.authority_score,
+        authority_score=authority_score,
+        source_type=source_type,
+        source_authority=authority_score,
         canonical_url=canonicalize_url(link),
         content=content,
-        evidence_level=source_feed.evidence_level,
-        is_primary_source=source_feed.is_primary_source,
-        is_independent_source=source_feed.is_independent_source,
-        is_discovery_source=source_feed.is_discovery_source,
+        evidence_level=evidence_level,
+        is_primary_source=is_primary,
+        is_independent_source=is_independent,
+        is_discovery_source=is_discovery,
     )
 
 

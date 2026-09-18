@@ -14,6 +14,84 @@ from .entity_registry import (
 )
 from .models import Article, Event, EventArticle
 
+# ── Clustering Parameters & Thresholds ────────────────────────────────────────
+
+DEFAULT_EVENT_WINDOW_HOURS: float = 72.0
+DEFAULT_SIMILARITY_THRESHOLD: float = 0.60
+MIN_CLUSTER_COHESION_RATIO: float = 0.65  # Minimum ratio of similarity_threshold required for all cluster pairs
+
+# Hard-negative threshold guards
+MIN_JACCARD_SHARED_JOINT_CONTEXT: float = 0.15
+MIN_JACCARD_SINGLE_ENTITY_CONTEXT: float = 0.20
+
+# Similarity Bonuses
+BONUS_MULTI_ENTITIES: float = 0.30
+BONUS_SINGLE_ENTITY_WITH_CONTEXT: float = 0.25
+BONUS_SINGLE_ENTITY_NO_CONTEXT: float = 0.05
+BONUS_SHARED_MODELS: float = 0.25
+BONUS_SHARED_THEMES: float = 0.15
+BONUS_BENCHMARK_RELEASE_THEMES: float = 0.10
+BONUS_SHARED_ACTIONS: float = 0.15
+
+# Clash Penalties
+CLASH_PENALTY_LEGAL: float = 0.45
+CLASH_PENALTY_OFFICE: float = 0.40
+CLASH_PENALTY_EXECUTIVE: float = 0.40
+CLASH_PENALTY_SECURITY: float = 0.40
+CLASH_PENALTY_PARTNERSHIP: float = 0.40
+
+# Verification Status Constants
+VERIFICATION_STATUS_PRIMARY_ONLY = "primary_only"
+VERIFICATION_STATUS_INDEPENDENTLY_REPORTED = "independently_reported"
+VERIFICATION_STATUS_MULTI_SOURCE = "multi_source"
+VERIFICATION_STATUS_DISCOVERY_ONLY = "discovery_only"
+VERIFICATION_STATUS_INSUFFICIENT = "insufficient_evidence"
+
+VALID_VERIFICATION_STATUSES = frozenset({
+    VERIFICATION_STATUS_PRIMARY_ONLY,
+    VERIFICATION_STATUS_INDEPENDENTLY_REPORTED,
+    VERIFICATION_STATUS_MULTI_SOURCE,
+    VERIFICATION_STATUS_DISCOVERY_ONLY,
+    VERIFICATION_STATUS_INSUFFICIENT,
+})
+
+# Confidence Base Scores & Modifiers
+CONFIDENCE_BASE_MULTI_SOURCE: float = 85.0
+CONFIDENCE_BASE_INDEPENDENTLY_REPORTED: float = 70.0
+CONFIDENCE_BASE_PRIMARY_ONLY: float = 58.0
+CONFIDENCE_BASE_DISCOVERY_ONLY: float = 22.0
+CONFIDENCE_BASE_INSUFFICIENT: float = 10.0
+
+MODIFIER_REGULATORY_SOURCE: float = 12.0
+MODIFIER_RESEARCH_EVIDENCE: float = 8.0
+MODIFIER_EXTRA_INDEPENDENT_PUBLISHER: float = 6.0
+MAX_EXTRA_INDEPENDENT_BONUS: float = 18.0
+MODIFIER_FRONTIER_AUTHORITY_95: float = 5.0
+MODIFIER_FRONTIER_AUTHORITY_90: float = 4.0
+MODIFIER_ARTICLE_CONTENT_PRESENT: float = 3.0
+
+PENALTY_DISCOVERY_ONLY: float = 8.0
+PENALTY_SINGLE_UNVERIFIED_PUBLISHER: float = 5.0
+
+# Confidence Ceiling Constants
+CONFIDENCE_CEILING_PRIMARY_ONLY_DELTA: float = 2.0  # Cap primary-only at THRESHOLD_HIGH - 2.0
+CONFIDENCE_CEILING_DISCOVERY_ONLY_DELTA: float = 5.0  # Cap discovery-only at THRESHOLD_MEDIUM - 5.0
+CONFIDENCE_CEILING_INSUFFICIENT: float = 20.0
+
+CONFIDENCE_LABEL_HIGH = "High"
+CONFIDENCE_LABEL_MEDIUM = "Medium"
+CONFIDENCE_LABEL_LOW = "Low"
+
+CONFIDENCE_LABEL_HIGH_KO = "높음"
+CONFIDENCE_LABEL_MEDIUM_KO = "보통"
+CONFIDENCE_LABEL_LOW_KO = "낮음"
+
+CONFIDENCE_THRESHOLD_HIGH: float = 70.0
+CONFIDENCE_THRESHOLD_MEDIUM: float = 40.0
+MAX_PUB_NAMES_IN_EXPLANATION: int = 3
+
+# ── Vocabulary & Patterns ─────────────────────────────────────────────────────
+
 STOP_WORDS = {
     "a", "about", "above", "after", "again", "against", "all", "am", "an", "and",
     "any", "are", "aren't", "as", "at", "be", "because", "been", "before", "being",
@@ -72,22 +150,6 @@ AI_ACTION_ANCHORS = {
     "executive_movement": ["hire", "hires", "hired", "executive", "executives", "resign", "resigns", "resignation", "appointment", "appoints", "appointed", "영입", "사임", "임명", "선임"],
 }
 
-
-def _match_keyword_in_text(keyword: str, text: str) -> bool:
-    if re.search(r"^[a-z0-9\s_-]+$", keyword):
-        return bool(re.search(r"\b" + re.escape(keyword) + r"\b", text, re.I))
-    return keyword in text
-
-
-@dataclass(frozen=True, slots=True)
-class EventAnchor:
-    """Structured semantic anchor of an event or article."""
-    entities: frozenset[str]
-    models: frozenset[str]
-    themes: frozenset[str]
-    actions: frozenset[str]
-
-
 ACTION_CONFLICTS: dict[frozenset[str], float] = {
     frozenset({"release", "office_expansion"}): 0.40,
     frozenset({"release", "executive_movement"}): 0.40,
@@ -101,8 +163,26 @@ ACTION_CONFLICTS: dict[frozenset[str], float] = {
 }
 
 
+def _match_keyword_in_text(keyword: str, text: str) -> bool:
+    if re.search(r"^[a-z0-9\s_-]+$", keyword):
+        return bool(re.search(r"\b" + re.escape(keyword) + r"\b", text, re.I))
+    return keyword in text
+
+
+# ── Feature & Anchor Data Structures ──────────────────────────────────────────
+
+@dataclass(frozen=True, slots=True)
+class EventAnchor:
+    """Structured semantic anchor of an event or article."""
+    entities: frozenset[str]
+    models: frozenset[str]
+    themes: frozenset[str]
+    actions: frozenset[str]
+
+
 @dataclass(slots=True)
 class ArticleClusteringFeatures:
+    """Extracted semantic & token features of an article."""
     text: str
     title_text: str
     models: set[str]
@@ -147,6 +227,7 @@ def extract_event_anchors(
 
 
 def extract_clustering_features(article: Article) -> ArticleClusteringFeatures:
+    """Extract and cache structured features for an article for fast clustering."""
     title_parts = [article.title or "", article.title_ko or "", article.title_en or ""]
     full_title_text = " ".join(p for p in title_parts if p).strip()
 
@@ -199,13 +280,16 @@ def extract_clustering_features(article: Article) -> ArticleClusteringFeatures:
     )
 
 
+# ── Pairwise Similarity Calculation ───────────────────────────────────────────
+
 def calculate_event_similarity(
     a1: Article,
     a2: Article,
-    window_hours: float = 72.0,
+    window_hours: float = DEFAULT_EVENT_WINDOW_HOURS,
     f1: ArticleClusteringFeatures | None = None,
     f2: ArticleClusteringFeatures | None = None,
 ) -> float:
+    """Compute pairwise similarity between two articles with hard-negative guards and thematic bonuses."""
     if a1.article_id and a1.article_id == a2.article_id:
         return 1.0
     if a1.canonical_url and a1.canonical_url == a2.canonical_url:
@@ -239,7 +323,7 @@ def calculate_event_similarity(
             bool((f1.themes & f2.themes) & {"partnership", "legal_policy", "security_safety"})
             or bool((f1.actions & f2.actions) & {"partnership", "legal", "security"})
         )
-        if not (shared_joint_context and jaccard >= 0.15):
+        if not (shared_joint_context and jaccard >= MIN_JACCARD_SHARED_JOINT_CONTEXT):
             return 0.0
 
     # 2. Model version collision
@@ -277,23 +361,23 @@ def calculate_event_similarity(
     # Legal / investigation vs pure release / product (unless shared legal/policy theme)
     if (("legal" in f1.actions) ^ ("legal" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
         if not ((f1.themes & f2.themes) & {"legal_policy", "partnership"}):
-            clash_penalty += 0.45
+            clash_penalty += CLASH_PENALTY_LEGAL
     # Office expansion vs pure release / legal / security (when not sharing joint theme)
     if (("office_expansion" in f1.actions) ^ ("office_expansion" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
         if not (f1.themes & f2.themes & {"model_release", "partnership"}):
-            clash_penalty += 0.40
+            clash_penalty += CLASH_PENALTY_OFFICE
     # Executive movement vs pure release / legal / security
     if (("executive_movement" in f1.actions) ^ ("executive_movement" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
         if not (f1.themes & f2.themes & {"model_release", "partnership"}):
-            clash_penalty += 0.40
+            clash_penalty += CLASH_PENALTY_EXECUTIVE
     # Security vulnerability vs pure release
     if (("security" in f1.actions) ^ ("security" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
         if not ((f1.themes & f2.themes) & {"security_safety", "partnership"}):
-            clash_penalty += 0.40
+            clash_penalty += CLASH_PENALTY_SECURITY
     # Partnership vs pure release (without shared partnership or multi-entity context)
     if (("partnership" in f1.actions) ^ ("partnership" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
         if not ((f1.themes & f2.themes) & {"partnership", "security_safety"} or len(f1.entities & f2.entities) >= 2):
-            clash_penalty += 0.40
+            clash_penalty += CLASH_PENALTY_PARTNERSHIP
 
     # Layered Score Aggregation
     score = jaccard
@@ -301,57 +385,42 @@ def calculate_event_similarity(
     # Entities bonus
     shared_entities = f1.entities & f2.entities
     if len(shared_entities) >= 2:
-        score += 0.30
+        score += BONUS_MULTI_ENTITIES
     elif len(shared_entities) == 1:
         has_shared_action_or_theme = bool(
             (f1.actions & f2.actions)
             or (f1.themes & f2.themes)
             or (f1.models & f2.models)
             or ((f1.themes | f2.themes) <= {"model_release", "benchmarking"} and (f1.themes or f2.themes))
-            or jaccard >= 0.20
+            or jaccard >= MIN_JACCARD_SINGLE_ENTITY_CONTEXT
         )
         if has_shared_action_or_theme:
-            score += 0.25
+            score += BONUS_SINGLE_ENTITY_WITH_CONTEXT
         else:
             # Merely mentioning the same company with completely unrelated actions/themes
-            score += 0.05
+            score += BONUS_SINGLE_ENTITY_NO_CONTEXT
 
     # Models bonus
     if f1.models and f2.models and not f1.models.isdisjoint(f2.models):
-        score += 0.25
+        score += BONUS_SHARED_MODELS
 
     # Themes bonus
     if f1.themes and f2.themes and not f1.themes.isdisjoint(f2.themes):
-        score += 0.15
+        score += BONUS_SHARED_THEMES
     elif (f1.themes | f2.themes) <= {"model_release", "benchmarking"} and (f1.themes and f2.themes):
         # Benchmarking coverage of a new model release
-        score += 0.10
+        score += BONUS_BENCHMARK_RELEASE_THEMES
 
     # Actions bonus
     if f1.actions and f2.actions and not f1.actions.isdisjoint(f2.actions):
-        score += 0.15
+        score += BONUS_SHARED_ACTIONS
 
     score -= clash_penalty
 
     return min(1.0, max(0.0, score))
 
 
-# ── Verification status constants ─────────────────────────────────────────────
-
-VERIFICATION_STATUS_PRIMARY_ONLY = "primary_only"
-VERIFICATION_STATUS_INDEPENDENTLY_REPORTED = "independently_reported"
-VERIFICATION_STATUS_MULTI_SOURCE = "multi_source"
-VERIFICATION_STATUS_DISCOVERY_ONLY = "discovery_only"
-VERIFICATION_STATUS_INSUFFICIENT = "insufficient_evidence"
-
-VALID_VERIFICATION_STATUSES = frozenset({
-    VERIFICATION_STATUS_PRIMARY_ONLY,
-    VERIFICATION_STATUS_INDEPENDENTLY_REPORTED,
-    VERIFICATION_STATUS_MULTI_SOURCE,
-    VERIFICATION_STATUS_DISCOVERY_ONLY,
-    VERIFICATION_STATUS_INSUFFICIENT,
-})
-
+# ── Evidence Metadata Aggregation ─────────────────────────────────────────────
 
 def _normalize_publisher(publisher: str) -> str:
     """Canonical form of a publisher name for deduplication.
@@ -403,8 +472,6 @@ def compute_event_evidence(articles: list[Article]) -> EventEvidence:
     independently_reported:  ≥1 primary + ≥1 independent publisher
     multi_source:            ≥2 independent publishers (with or without primary)
     """
-    # Bucket articles by canonical publisher name and evidence level.
-    # We use a dict: canonical_publisher -> set of evidence_levels seen from that publisher.
     publisher_evidence: dict[str, set[str]] = {}
 
     for a in articles:
@@ -475,6 +542,12 @@ def compute_event_evidence(articles: list[Article]) -> EventEvidence:
     elif n_research >= 1:
         # Research publication without independent reporting
         status = VERIFICATION_STATUS_PRIMARY_ONLY
+    elif len(other_pubs) >= 2:
+        # Two or more distinct industry media outlets covering the event
+        status = VERIFICATION_STATUS_MULTI_SOURCE
+    elif len(other_pubs) == 1:
+        # Single industry media reporting
+        status = VERIFICATION_STATUS_INDEPENDENTLY_REPORTED
     else:
         status = VERIFICATION_STATUS_INSUFFICIENT
 
@@ -489,23 +562,7 @@ def compute_event_evidence(articles: list[Article]) -> EventEvidence:
     )
 
 
-# ── Evidence confidence ───────────────────────────────────────────────────────
-
-CONFIDENCE_LABEL_HIGH = "High"
-CONFIDENCE_LABEL_MEDIUM = "Medium"
-CONFIDENCE_LABEL_LOW = "Low"
-
-CONFIDENCE_LABEL_HIGH_KO = "높음"
-CONFIDENCE_LABEL_MEDIUM_KO = "보통"
-CONFIDENCE_LABEL_LOW_KO = "낮음"
-
-# Score thresholds
-_THRESHOLD_HIGH = 70.0
-_THRESHOLD_MEDIUM = 40.0
-
-# Display caps on publisher names in explanations (keep it short)
-_MAX_PUB_NAMES = 3
-
+# ── Evidence Confidence & Calibration ─────────────────────────────────────────
 
 @dataclass(slots=True)
 class ConfidenceResult:
@@ -538,13 +595,7 @@ def _build_explanation(
     has_research: bool,
     has_regulatory: bool,
 ) -> tuple[str, str]:
-    """Build short bilingual explanations (English, Korean).
-
-    Rules:
-    - Never say "verified" or "확인됨" as a factual claim
-    - Neutral, factual phrasing only
-    - Cap at _MAX_PUB_NAMES names each side to keep it short
-    """
+    """Build short bilingual explanations (English, Korean)."""
     en_parts: list[str] = []
     ko_parts: list[str] = []
 
@@ -564,8 +615,8 @@ def _build_explanation(
         ko_parts.append("규제기관 발표")
 
     if primary_sources:
-        display = [_pretty_pub(p) for p in primary_sources[:_MAX_PUB_NAMES]]
-        more = len(primary_sources) - _MAX_PUB_NAMES
+        display = [_pretty_pub(p) for p in primary_sources[:MAX_PUB_NAMES_IN_EXPLANATION]]
+        more = len(primary_sources) - MAX_PUB_NAMES_IN_EXPLANATION
         names_en = ", ".join(display) + (f" (+{more} more)" if more > 0 else "")
         names_ko = ", ".join(display) + (f" 외 {more}곳" if more > 0 else "")
         en_parts.append(f"{names_en} primary announcement")
@@ -576,15 +627,14 @@ def _build_explanation(
         ko_parts.append("연구기관 발표 기반")
 
     if independent_sources:
-        display = [_pretty_pub(p) for p in independent_sources[:_MAX_PUB_NAMES]]
-        more = len(independent_sources) - _MAX_PUB_NAMES
+        display = [_pretty_pub(p) for p in independent_sources[:MAX_PUB_NAMES_IN_EXPLANATION]]
+        more = len(independent_sources) - MAX_PUB_NAMES_IN_EXPLANATION
         names_en = ", ".join(display) + (f" (+{more} more)" if more > 0 else "")
         names_ko = ", ".join(display) + (f" 외 {more}곳" if more > 0 else "")
         en_parts.append(f"independent {names_en} reporting")
         ko_parts.append(f"{names_ko} 독립 취재")
 
     if not en_parts:
-        # Industry media or other fallback
         return (
             "Industry media coverage only",
             "산업 전문 매체 보도만 확인됨",
@@ -599,43 +649,22 @@ def compute_event_confidence(
 ) -> ConfidenceResult:
     """Compute evidence confidence for an event cluster.
 
-    Score is 0–100.  It describes the strength and diversity of *available*
+    Score is 0–100. It describes the strength and diversity of *available*
     evidence, NOT a claim that the underlying fact is objectively true.
-
-    Scoring approach
-    ----------------
-    Base score from verification_status:
-      multi_source            85
-      independently_reported  70
-      primary_only            58
-      (fallback/other)        40
-      discovery_only          22
-      insufficient_evidence   10
-
-    Modifiers (all additive/subtractive, capped at 0–100):
-      +12  regulatory source present
-      +8   research evidence present (evidence_level==research)
-      +6   each additional independent publisher beyond 1 (max +18)
-      +5   primary source authority score ≥ 95 (frontier lab)
-      +4   primary source authority score ≥ 90
-      +3   at least one article has non-empty content
-      -8   all articles are discovery-source only
-      -5   evidence_diversity == 1 and no independent source
-           (single industry_media outlet, no primary or independent)
     """
     status = evidence.verification_status
 
     # Base score
     if status == VERIFICATION_STATUS_MULTI_SOURCE:
-        score = 85.0
+        score = CONFIDENCE_BASE_MULTI_SOURCE
     elif status == VERIFICATION_STATUS_INDEPENDENTLY_REPORTED:
-        score = 70.0
+        score = CONFIDENCE_BASE_INDEPENDENTLY_REPORTED
     elif status == VERIFICATION_STATUS_PRIMARY_ONLY:
-        score = 58.0
+        score = CONFIDENCE_BASE_PRIMARY_ONLY
     elif status == VERIFICATION_STATUS_DISCOVERY_ONLY:
-        score = 22.0
+        score = CONFIDENCE_BASE_DISCOVERY_ONLY
     else:  # insufficient_evidence
-        score = 10.0
+        score = CONFIDENCE_BASE_INSUFFICIENT
 
     has_research = any(
         (a.evidence_level or "") == "research"
@@ -650,15 +679,15 @@ def compute_event_confidence(
 
     # Modifier: regulatory source
     if has_regulatory:
-        score += 12.0
+        score += MODIFIER_REGULATORY_SOURCE
 
     # Modifier: research evidence
     if has_research:
-        score += 8.0
+        score += MODIFIER_RESEARCH_EVIDENCE
 
     # Modifier: extra independent publishers (each beyond the first)
     extra_ind = max(0, len(evidence.independent_sources) - 1)
-    score += min(18.0, extra_ind * 6.0)
+    score += min(MAX_EXTRA_INDEPENDENT_BONUS, extra_ind * MODIFIER_EXTRA_INDEPENDENT_PUBLISHER)
 
     # Modifier: primary source authority
     max_authority = 0
@@ -668,17 +697,17 @@ def compute_event_confidence(
             if auth and auth > max_authority:
                 max_authority = auth
     if max_authority >= 95:
-        score += 5.0
+        score += MODIFIER_FRONTIER_AUTHORITY_95
     elif max_authority >= 90:
-        score += 4.0
+        score += MODIFIER_FRONTIER_AUTHORITY_90
 
     # Modifier: article content present
     if has_content:
-        score += 3.0
+        score += MODIFIER_ARTICLE_CONTENT_PRESENT
 
     # Penalty: discovery only
     if status == VERIFICATION_STATUS_DISCOVERY_ONLY:
-        score -= 8.0
+        score -= PENALTY_DISCOVERY_ONLY
 
     # Penalty: single non-primary/non-independent publisher
     if (
@@ -686,29 +715,29 @@ def compute_event_confidence(
         and len(evidence.primary_sources) == 0
         and len(evidence.independent_sources) == 0
     ):
-        score -= 5.0
+        score -= PENALTY_SINGLE_UNVERIFIED_PUBLISHER
 
     # Evidence Quality Ceiling Guards:
     # 1. Primary-only announcements (without independent reporting or regulatory confirmation)
     #    must not exceed Medium confidence (_THRESHOLD_HIGH - 2.0 = 68.0 max).
     if status == VERIFICATION_STATUS_PRIMARY_ONLY and not has_regulatory:
-        score = min(score, _THRESHOLD_HIGH - 2.0)
+        score = min(score, CONFIDENCE_THRESHOLD_HIGH - CONFIDENCE_CEILING_PRIMARY_ONLY_DELTA)
 
     # 2. Discovery-only events must stay in Low confidence (< _THRESHOLD_MEDIUM)
     if status == VERIFICATION_STATUS_DISCOVERY_ONLY:
-        score = min(score, _THRESHOLD_MEDIUM - 5.0)
+        score = min(score, CONFIDENCE_THRESHOLD_MEDIUM - CONFIDENCE_CEILING_DISCOVERY_ONLY_DELTA)
 
     # 3. Insufficient evidence must stay very low (< 25.0)
     if status == VERIFICATION_STATUS_INSUFFICIENT:
-        score = min(score, 20.0)
+        score = min(score, CONFIDENCE_CEILING_INSUFFICIENT)
 
     score = round(max(0.0, min(100.0, score)), 1)
 
     # Label
-    if score >= _THRESHOLD_HIGH:
+    if score >= CONFIDENCE_THRESHOLD_HIGH:
         label = CONFIDENCE_LABEL_HIGH
         label_ko = CONFIDENCE_LABEL_HIGH_KO
-    elif score >= _THRESHOLD_MEDIUM:
+    elif score >= CONFIDENCE_THRESHOLD_MEDIUM:
         label = CONFIDENCE_LABEL_MEDIUM
         label_ko = CONFIDENCE_LABEL_MEDIUM_KO
     else:
@@ -732,13 +761,15 @@ def compute_event_confidence(
     )
 
 
+# ── Cluster Representatives & Compatibility Checks ─────────────────────────────
+
 def select_cluster_representative(
     cluster: list[int],
     articles: list[Article],
     features: list[ArticleClusteringFeatures],
-    window_hours: float = 72.0,
+    window_hours: float = DEFAULT_EVENT_WINDOW_HOURS,
 ) -> int:
-    """Select the most authoritative and central representative article for a cluster.
+    """Select the most authoritative and central representative article index for a cluster.
 
     Deterministic ranking:
     1. Primary/Official status (1 if official/primary else 0)
@@ -775,38 +806,20 @@ def select_cluster_representative(
         p_score = art.priority_score or art.score or 0.0
         anchor_richness = len(feat.models) * 2 + len(feat.entities) + len(feat.actions)
 
-        # Average similarity to other cluster members
-        other_sims = [
-            calculate_event_similarity(
-                art,
-                articles[o_idx],
-                window_hours=window_hours,
-                f1=feat,
-                f2=features[o_idx],
-            )
-            for o_idx in cluster
-            if o_idx != idx
-        ]
-        avg_centrality = sum(other_sims) / len(other_sims) if other_sims else 1.0
-
         pub_iso = art.published_at.isoformat() if art.published_at else ""
         uid = art.article_id or art.url or ""
 
-        # For sorting: higher ranks/scores first, then earliest published_at (reverse string/negate)
         scores.append((
             is_off,
             ev_rank,
             auth_score,
             p_score,
             anchor_richness,
-            avg_centrality,
             pub_iso,
             uid,
             idx,
         ))
 
-    # Sort key: descending for quality/centrality, ascending for date/uid (using standard deterministic comparator)
-    # We sort by (is_off DESC, ev_rank DESC, auth_score DESC, p_score DESC, anchor_richness DESC, avg_centrality DESC, pub_iso ASC, uid ASC)
     def rep_sort_key(item):
         return (
             -item[0],
@@ -814,13 +827,12 @@ def select_cluster_representative(
             -item[2],
             -item[3],
             -item[4],
-            -item[5],
-            item[6],  # oldest first
-            item[7],  # stable uid
+            item[5],  # oldest first
+            item[6],  # stable uid
         )
 
     scores.sort(key=rep_sort_key)
-    return scores[0][8]
+    return scores[0][7]
 
 
 def compute_cluster_anchor(
@@ -839,7 +851,7 @@ def compute_cluster_anchor(
         models.update(f.models)
         themes.update(f.themes)
         actions.update(f.actions)
-        # Also map theme-derived actions
+        # Map theme-derived actions
         if "model_release" in f.themes:
             actions.add("release")
         if "pricing" in f.themes:
@@ -910,7 +922,6 @@ def is_candidate_compatible_with_cluster(
     if sim_to_rep < similarity_threshold and max_member_sim < similarity_threshold:
         return False, 0.0
 
-
     # Aggregate cluster anchor
     cluster_anchor = compute_cluster_anchor(cluster, features)
 
@@ -934,8 +945,6 @@ def is_candidate_compatible_with_cluster(
         candidate_actions.add("partnership")
 
     # Cluster-level action conflict checking against ACTION_CONFLICTS
-    # A true conflict occurs when candidate and cluster have disjoint clashing actions,
-    # without a bridging action or joint context.
     has_shared_action = bool(candidate_actions & cluster_anchor.actions)
     has_shared_model = bool(candidate_feat.models & cluster_anchor.models)
     has_joint_context = (
@@ -950,7 +959,6 @@ def is_candidate_compatible_with_cluster(
         ):
             if not (has_shared_action or has_joint_context):
                 return False, 0.0
-
 
     # Verify pairwise cohesion across ALL members of the cluster
     sim_sum = 0.0
@@ -973,19 +981,10 @@ def is_candidate_compatible_with_cluster(
     return True, avg_sim
 
 
-def cluster_articles(
-    articles: list[Article],
-    similarity_threshold: float = 0.60,
-    window_hours: float = 72.0,
-) -> tuple[list[Event], list[EventArticle], list[Article]]:
-    """Cluster articles into Events with parent-child relationships, chaining safeguards, and coverage metrics."""
-    if not articles:
-        return [], [], []
+# ── Modular Clustering Helpers ────────────────────────────────────────────────
 
-    features = [extract_clustering_features(a) for a in articles]
-    n = len(articles)
-
-    # Deterministic sorting order: Official first, then highest priority_score/score, oldest published_at, then article_id/url
+def _sort_article_indices_for_clustering(articles: list[Article]) -> list[int]:
+    """Sort article indices deterministically for sequential cluster leader formation."""
     def sort_key(idx: int) -> tuple[int, float, str, str]:
         a = articles[idx]
         off = 1 if (a.is_official or a.source_type == "official" or a.is_primary_source) else 0
@@ -994,11 +993,19 @@ def cluster_articles(
         uid = a.article_id or a.url or ""
         return (off, p_score, pub, uid)
 
-    sorted_indices = sorted(range(n), key=sort_key, reverse=True)
+    return sorted(range(len(articles)), key=sort_key, reverse=True)
 
-    # Form clusters with cluster-representative and event anchor safeguards
+
+def _assign_articles_to_clusters(
+    articles: list[Article],
+    features: list[ArticleClusteringFeatures],
+    similarity_threshold: float,
+    window_hours: float,
+) -> list[list[int]]:
+    """Group article indices into clusters using cohesive anchor compatibility."""
+    sorted_indices = _sort_article_indices_for_clustering(articles)
     clusters: list[list[int]] = []
-    min_cohesion_threshold = similarity_threshold * 0.65  # e.g. 0.39 for 0.60 threshold
+    min_cohesion_threshold = similarity_threshold * MIN_CLUSTER_COHESION_RATIO
 
     for idx in sorted_indices:
         best_cluster_idx = -1
@@ -1024,109 +1031,113 @@ def cluster_articles(
         else:
             clusters.append([idx])
 
-    events: list[Event] = []
+    return clusters
+
+
+def _build_event_from_cluster(
+    cluster_indices: list[int],
+    articles: list[Article],
+) -> tuple[Event, list[EventArticle], list[Article]]:
+    """Construct an Event and EventArticle records with evidence metadata from a cluster."""
+    cluster_items = [articles[idx] for idx in cluster_indices]
+    primary = select_primary_article(cluster_items)
+
+    # Generate deterministic event_id
+    ev_id = f"ev_{hashlib.sha256(primary.url.encode()).hexdigest()[:16]}"
+    event_title = primary.title
+
+    # Legacy publisher set (raw, for backward-compat source_count fields)
+    publishers = {a.publisher or a.source for a in cluster_items if (a.publisher or a.source)}
+    has_official = any(a.is_official or a.source_type == "official" for a in cluster_items)
+    has_reg = any(a.source_type == "regulator" for a in cluster_items)
+    has_media = any(a.source_type in {"media", "korean_media"} for a in cluster_items)
+
+    official_url = None
+    official_name = None
+    for a in cluster_items:
+        if a.is_official or a.source_type == "official":
+            official_url = a.url
+            official_name = a.publisher or a.source
+            break
+
+    # Compute deduplicated evidence metadata
+    ev_evidence = compute_event_evidence(cluster_items)
+
+    # Compute evidence confidence score and explanation
+    ev_confidence = compute_event_confidence(ev_evidence, cluster_items)
+
+    src_count = len(ev_evidence.evidence_sources) if ev_evidence.evidence_sources else len(publishers)
+    ind_src_count = len(ev_evidence.independent_sources)
+
+    event = Event(
+        event_id=ev_id,
+        title=event_title,
+        category=primary.category,
+        importance=max(a.priority_score for a in cluster_items),
+        primary_article_id=primary.article_id,
+        source_count=src_count,
+        independent_source_count=ind_src_count,
+        has_official_source=has_official,
+        has_regulatory_source=has_reg,
+        has_major_media_source=has_media,
+        official_source_url=official_url,
+        official_source_name=official_name,
+        related_sources=sorted(publishers),
+        # Evidence metadata
+        evidence_sources=ev_evidence.evidence_sources,
+        primary_sources=ev_evidence.primary_sources,
+        independent_sources=ev_evidence.independent_sources,
+        evidence_diversity=ev_evidence.evidence_diversity,
+        verification_status=ev_evidence.verification_status,
+        # Confidence
+        confidence_score=ev_confidence.confidence_score,
+        confidence_label=ev_confidence.confidence_label,
+        confidence_explanation_ko=ev_confidence.explanation_ko,
+        confidence_explanation_en=ev_confidence.explanation_en,
+    )
+
     event_articles: list[EventArticle] = []
     updated_articles: list[Article] = []
+    rel_ids = [a.article_id for a in cluster_items if a.article_id]
 
-    for cluster_indices in clusters:
-        cluster_items = [articles[idx] for idx in cluster_indices]
-        primary = select_primary_article(cluster_items)
-
-        # Generate event_id
-        ev_id = f"ev_{hashlib.sha256(primary.url.encode()).hexdigest()[:16]}"
-        event_title = primary.title
-
-        # Legacy publisher set (raw, for backward-compat source_count fields)
-        publishers = {a.publisher or a.source for a in cluster_items if (a.publisher or a.source)}
-        has_official = any(a.is_official or a.source_type == "official" for a in cluster_items)
-        has_reg = any(a.source_type == "regulator" for a in cluster_items)
-        has_media = any(a.source_type in {"media", "korean_media"} for a in cluster_items)
-
-        official_url = None
-        official_name = None
-        for a in cluster_items:
-            if a.is_official or a.source_type == "official":
-                official_url = a.url
-                official_name = a.publisher or a.source
-                break
-
-        # Compute deduplicated evidence metadata
-        ev_evidence = compute_event_evidence(cluster_items)
-
-        # Compute evidence confidence score and explanation
-        ev_confidence = compute_event_confidence(ev_evidence, cluster_items)
-
-        # source_count: Number of distinct normalized publishers contributing coverage
-        # independent_source_count: Number of distinct normalized publishers with evidence_level == "independent"
-        src_count = len(ev_evidence.evidence_sources) if ev_evidence.evidence_sources else len(publishers)
-        ind_src_count = len(ev_evidence.independent_sources)
-
-        event = Event(
-            event_id=ev_id,
-            title=event_title,
-            category=primary.category,
-            importance=max(a.priority_score for a in cluster_items),
-            primary_article_id=primary.article_id,
-            source_count=src_count,
-            independent_source_count=ind_src_count,
-            has_official_source=has_official,
-            has_regulatory_source=has_reg,
-            has_major_media_source=has_media,
-            official_source_url=official_url,
-            official_source_name=official_name,
-            related_sources=sorted(publishers),
-            # Evidence metadata
-            evidence_sources=ev_evidence.evidence_sources,
-            primary_sources=ev_evidence.primary_sources,
-            independent_sources=ev_evidence.independent_sources,
-            evidence_diversity=ev_evidence.evidence_diversity,
-            verification_status=ev_evidence.verification_status,
-            # Confidence
-            confidence_score=ev_confidence.confidence_score,
-            confidence_label=ev_confidence.confidence_label,
-            confidence_explanation_ko=ev_confidence.explanation_ko,
-            confidence_explanation_en=ev_confidence.explanation_en,
-        )
-        events.append(event)
-
-
-        rel_ids = [a.article_id for a in cluster_items if a.article_id]
-        for a in cluster_items:
-            rel = "primary" if a.article_id == primary.article_id else "coverage"
-            event_articles.append(
-                EventArticle(
-                    event_id=ev_id,
-                    article_id=a.article_id or "",
-                    relationship=rel,
-                    similarity=1.0 if rel == "primary" else 0.85,
-                )
+    for a in cluster_items:
+        rel = "primary" if a.article_id == primary.article_id else "coverage"
+        event_articles.append(
+            EventArticle(
+                event_id=ev_id,
+                article_id=a.article_id or "",
+                relationship=rel,
+                similarity=1.0 if rel == "primary" else 0.85,
             )
+        )
 
-            # Update article event fields
-            a.event_id = ev_id
-            a.event_title = event_title
-            a.related_article_ids = rel_ids
-            a.event_source_count = src_count
-            a.event_independent_source_count = ind_src_count
-            a.event_has_official_source = has_official
-            a.event_has_regulatory_source = has_reg
-            a.event_has_major_media_source = has_media
-            a.event_official_source_url = official_url
-            a.event_official_source_name = official_name
-            a.event_related_sources = sorted(publishers)
-            a.event_evidence_sources = ev_evidence.evidence_sources
-            a.event_primary_sources = ev_evidence.primary_sources
-            a.event_independent_sources = ev_evidence.independent_sources
-            a.event_evidence_diversity = ev_evidence.evidence_diversity
-            a.event_verification_status = ev_evidence.verification_status
-            a.event_confidence_score = ev_confidence.confidence_score
-            a.event_confidence_label = ev_confidence.confidence_label
-            a.event_confidence_explanation_ko = ev_confidence.explanation_ko
-            a.event_confidence_explanation_en = ev_confidence.explanation_en
-            updated_articles.append(a)
+        # Update article event fields
+        a.event_id = ev_id
+        a.event_title = event_title
+        a.related_article_ids = rel_ids
+        a.event_source_count = src_count
+        a.event_independent_source_count = ind_src_count
+        a.event_has_official_source = has_official
+        a.event_has_regulatory_source = has_reg
+        a.event_has_major_media_source = has_media
+        a.event_official_source_url = official_url
+        a.event_official_source_name = official_name
+        a.event_related_sources = sorted(publishers)
+        a.event_evidence_sources = ev_evidence.evidence_sources
+        a.event_primary_sources = ev_evidence.primary_sources
+        a.event_independent_sources = ev_evidence.independent_sources
+        a.event_evidence_diversity = ev_evidence.evidence_diversity
+        a.event_verification_status = ev_evidence.verification_status
+        a.event_confidence_score = ev_confidence.confidence_score
+        a.event_confidence_label = ev_confidence.confidence_label
+        a.event_confidence_explanation_ko = ev_confidence.explanation_ko
+        a.event_confidence_explanation_en = ev_confidence.explanation_en
+        updated_articles.append(a)
 
-    return events, event_articles, updated_articles
+    return event, event_articles, updated_articles
 
+
+# ── Primary Article Selection ─────────────────────────────────────────────────
 
 def select_primary_article(articles: list[Article]) -> Article:
     """Select the best primary article for an event:
@@ -1146,3 +1157,38 @@ def select_primary_article(articles: list[Article]) -> Article:
     sorted_arts = sorted(articles, key=sort_key, reverse=True)
     return sorted_arts[0]
 
+
+# ── Main Entrypoint ───────────────────────────────────────────────────────────
+
+def cluster_articles(
+    articles: list[Article],
+    similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+    window_hours: float = DEFAULT_EVENT_WINDOW_HOURS,
+) -> tuple[list[Event], list[EventArticle], list[Article]]:
+    """Cluster articles into Events with representative anchors, chaining safeguards, and evidence metrics."""
+    if not articles:
+        return [], [], []
+
+    # Extract features once per article to reuse across all compatibility checks
+    features = [extract_clustering_features(a) for a in articles]
+
+    # Assign articles to cohesive clusters
+    clusters = _assign_articles_to_clusters(
+        articles=articles,
+        features=features,
+        similarity_threshold=similarity_threshold,
+        window_hours=window_hours,
+    )
+
+    # Finalize clusters into Event, EventArticle, and updated Article models
+    events: list[Event] = []
+    all_event_articles: list[EventArticle] = []
+    all_updated_articles: list[Article] = []
+
+    for cluster_indices in clusters:
+        ev, ev_arts, up_arts = _build_event_from_cluster(cluster_indices, articles)
+        events.append(ev)
+        all_event_articles.extend(ev_arts)
+        all_updated_articles.extend(up_arts)
+
+    return events, all_event_articles, all_updated_articles
