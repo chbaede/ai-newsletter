@@ -222,4 +222,41 @@ def test_canonical_source_type_and_counts():
     assert v_disc.source_type == "discovery"
 
 
+def test_display_topics_str_and_clean_key_points():
+    from ai_newsletter.presentation import display_key_points, display_topics_str, prepare_article_view
+
+    article = Article(
+        title="Meta releases Llama 3.3",
+        url="https://theinformation.com/articles/meta-llama-33",
+        source="The Information",
+        publisher="The Information",
+        category="frontier_models",
+        topics=["Funding & M&A", "Open Weights"],
+        key_points=[
+            "주요 기업/모델 (Entities): Meta AI",
+            "출처 (Source): The Information",
+            "핵심 분야 (Topics): Funding & M&A",
+            "발행처: The Information",
+            "실제 핵심 사실: 새로운 70B 오픈 가중치 모델 공개",
+        ],
+    )
+
+    topics_str = display_topics_str(article)
+    assert "Funding & M&A" in topics_str
+
+    cleaned_points = display_key_points(article)
+    # Redundant source and topics points should be filtered out
+    assert not any("출처" in pt for pt in cleaned_points)
+    assert not any("발행처" in pt for pt in cleaned_points)
+    assert not any("핵심 분야" in pt for pt in cleaned_points)
+    # Substantive facts and entities are kept
+    assert any("Meta AI" in pt for pt in cleaned_points)
+    assert any("새로운 70B" in pt for pt in cleaned_points)
+
+    view = prepare_article_view(article)
+    assert view.topics_display == topics_str
+    assert view.transparency.sources_display == "The Information"
+
+
+
 

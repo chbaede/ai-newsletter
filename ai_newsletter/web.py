@@ -203,6 +203,11 @@ def _render_index(
         displayed_articles = [article for sec in sections for article in sec["articles"]]
         sorted_all = sorted(issue.articles, key=lambda a: a.priority_score or a.score or 0.0, reverse=True)
         all_table_views = [prepare_article_view(a) for a in sorted_all]
+        table_categories = sorted({v.primary_category_ko for v in all_table_views if v.primary_category_ko})
+        table_sources = sorted({v.publisher_display for v in all_table_views if v.publisher_display})
+    else:
+        table_categories = []
+        table_sources = []
 
     return templates.TemplateResponse(
         request,
@@ -211,6 +216,8 @@ def _render_index(
             "issue": issue,
             "sections": sections,
             "all_table_views": all_table_views,
+            "table_categories": table_categories,
+            "table_sources": table_sources,
             "history": store.list_issues(),
             "today": date.today().isoformat(),
             "lang": lang,

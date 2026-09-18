@@ -234,6 +234,7 @@ class ArticleView:
     publisher_display: str
     transparency: SourceTransparency
     key_points: list[str]
+    topics_display: str = ""
 
 
 def regions_for_article(article: Article) -> list[RegionSignal]:
@@ -372,6 +373,21 @@ def display_url(article: Article) -> str:
     return article.canonical_url or article.url
 
 
+def display_topics_str(article: Article) -> str:
+    if article.topics:
+        return ", ".join(article.topics[:3])
+    for pt in article.key_points or []:
+        p = str(pt).strip()
+        if "핵심 분야" in p or "Topics" in p or "주요 분야" in p or "핵심 토픽" in p:
+            if ":" in p:
+                val = p.split(":", 1)[1].strip()
+                if val:
+                    return val
+    if article.tags:
+        return ", ".join(article.tags[:3])
+    return display_primary_category(article, "ko")
+
+
 def display_key_points(article: Article) -> list[str]:
     points = article.key_points or []
     cleaned: list[str] = []
@@ -380,8 +396,18 @@ def display_key_points(article: Article) -> list[str]:
         p_str = str(pt).strip()
         if not p_str:
             continue
-        # Filter out redundant '발행처' or duplicated source points
-        if p_str.startswith("발행처:") or p_str.startswith("발행처 :") or p_str.startswith("출처:"):
+        p_lower = p_str.lower()
+        # Filter out redundant metadata like source, publisher, or category/topics
+        if (
+            p_str.startswith("발행처")
+            or p_str.startswith("출처")
+            or ("source" in p_lower and ("출처" in p_str or "발행처" in p_str))
+            or p_str.startswith("핵심 분야")
+            or p_str.startswith("핵심 토픽")
+            or p_str.startswith("주요 분야")
+            or p_str.startswith("카테고리")
+            or ("topics" in p_lower and ("분야" in p_str or "토픽" in p_str))
+        ):
             continue
         if p_str not in seen:
             seen.add(p_str)
@@ -567,6 +593,7 @@ def prepare_article_view(article: Article) -> ArticleView:
         publisher_display=article.publisher or article.source or "Unknown Source",
         transparency=display_source_transparency(article),
         key_points=display_key_points(article),
+        topics_display=display_topics_str(article),
     )
 
 

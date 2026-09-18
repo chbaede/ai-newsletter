@@ -265,5 +265,36 @@ def test_main_hub_links_and_priority_filter_attributes(client):
     assert 'data-priority=' in html
 
 
+def test_card_metadata_unification_and_table_filters(client):
+    res = client.get("/issues/2026-09-17")
+    assert res.status_code == 200
+    html = res.text
+
+    # Unified card meta box present
+    assert 'class="card-meta-box"' in html
+    assert '출처:' in html
+    assert '핵심 분야:' in html
+    assert '증거:' in html
+    assert '신뢰도:' in html
+
+    # Table filter toolbar elements present
+    assert 'id="tableFilterCategory"' in html
+    assert 'id="tableFilterSource"' in html
+    assert 'id="tableFilterConfidence"' in html
+    assert 'id="tablePageSize"' in html
+    assert 'id="tableFilterReset"' in html
+
+    # Sortable headers present
+    assert 'data-sort="priority"' in html
+    assert 'data-sort="category"' in html
+    assert 'data-sort="confidence"' in html
+    assert 'data-sort="source"' in html
+
+    # Pagination elements present
+    assert 'id="tablePagination"' in html
+    assert 'id="tablePaginationControls"' in html
+
+
+
 
 

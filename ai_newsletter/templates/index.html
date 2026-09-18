@@ -347,28 +347,37 @@
                     </ul>
                   {% endif %}
 
-                  <!-- Consolidated Bottom Card Footer: Source, Evidence, Confidence & Details -->
-                  <div class="card-footer-transparency">
-                    <div class="source-transparency-row">
-                      <div class="transparency-item">
-                        <span class="transparency-label">
+                  <!-- Consolidated Unified Metadata Box: Source, Topics, Evidence, Confidence -->
+                  <div class="card-meta-box">
+                    <div class="meta-box-row">
+                      <div class="meta-box-item">
+                        <span class="meta-box-label">
                           <span class="lang-ko">출처:</span>
                           <span class="lang-en" style="display:none;">Source:</span>
                         </span>
-                        <span class="transparency-val source-val">{{ view.transparency.sources_display }}</span>
+                        <span class="meta-box-val font-semibold">{{ view.transparency.sources_display }}</span>
                       </div>
-                      <div class="transparency-item">
-                        <span class="transparency-label">
+                      <div class="meta-box-item">
+                        <span class="meta-box-label">
+                          <span class="lang-ko">핵심 분야:</span>
+                          <span class="lang-en" style="display:none;">Topics:</span>
+                        </span>
+                        <span class="meta-box-val">{{ view.topics_display }}</span>
+                      </div>
+                    </div>
+                    <div class="meta-box-row">
+                      <div class="meta-box-item">
+                        <span class="meta-box-label">
                           <span class="lang-ko">증거:</span>
                           <span class="lang-en" style="display:none;">Evidence:</span>
                         </span>
-                        <span class="transparency-val">
+                        <span class="meta-box-val">
                           <span class="lang-ko">{{ view.transparency.evidence_label_ko }}</span>
                           <span class="lang-en" style="display:none;">{{ view.transparency.evidence_label_en }}</span>
                         </span>
                       </div>
-                      <div class="transparency-item">
-                        <span class="transparency-label">
+                      <div class="meta-box-item">
+                        <span class="meta-box-label">
                           <span class="lang-ko">신뢰도:</span>
                           <span class="lang-en" style="display:none;">Confidence:</span>
                         </span>
@@ -408,14 +417,6 @@
                         </div>
                       </details>
                     {% endif %}
-
-                    {% if view.user_tags %}
-                      <div class="tags-row">
-                        {% for tag in view.user_tags[:4] %}
-                          <span class="tag-pill">{{ tag }}</span>
-                        {% endfor %}
-                      </div>
-                    {% endif %}
                   </div>
                 </article>
               {% endfor %}
@@ -446,17 +447,91 @@
             <div class="table-header-flex">
               <div>
                 <h3>
-                  <span class="lang-ko">전체 뉴스 브리핑 목록 (우선순위순)</span>
-                  <span class="lang-en" style="display:none;">All Intelligence Briefings (Ranked by Priority)</span>
+                  <span class="lang-ko">전체 뉴스 브리핑 목록</span>
+                  <span class="lang-en" style="display:none;">All Intelligence Briefings</span>
                 </h3>
                 <p>
-                  <span class="lang-ko">전체 수집된 {{ all_table_views|length }}건의 뉴스 목록입니다. 제목을 클릭하면 원문 기사로 바로 이동합니다.</span>
-                  <span class="lang-en" style="display:none;">Complete indexed {{ all_table_views|length }} briefings ordered by priority score. Click any title to read the original article.</span>
+                  <span class="lang-ko">전체 수집된 {{ all_table_views|length }}건의 뉴스 목록입니다. 헤더를 클릭하여 정렬하고, 분야/출처/신뢰도별로 필터링할 수 있습니다.</span>
+                  <span class="lang-en" style="display:none;">Complete indexed {{ all_table_views|length }} briefings. Click headers to sort, or filter by category, source, and confidence.</span>
                 </p>
               </div>
-              <div class="table-search-box">
-                <input type="text" id="briefingTableSearch" placeholder="기사 제목 또는 출처 검색..." aria-label="기사 검색">
+              <div class="table-toolbar-actions">
+                <span class="table-count-badge" id="tableFilterCount">
+                  <span class="lang-ko">총 {{ all_table_views|length }}건</span>
+                  <span class="lang-en" style="display:none;">Total {{ all_table_views|length }}</span>
+                </span>
               </div>
+            </div>
+
+            <!-- Enhanced Table Filter Toolbar: Category, Source, Confidence, Search, Page Size -->
+            <div class="table-filter-toolbar">
+              <div class="table-filter-item">
+                <label for="tableFilterCategory" class="table-filter-label">
+                  <span class="lang-ko">분야:</span>
+                  <span class="lang-en" style="display:none;">Category:</span>
+                </label>
+                <select id="tableFilterCategory" class="table-select-filter">
+                  <option value="all">전체 분야 (All)</option>
+                  {% for cat in table_categories %}
+                    <option value="{{ cat }}">{{ cat }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="table-filter-item">
+                <label for="tableFilterSource" class="table-filter-label">
+                  <span class="lang-ko">출처:</span>
+                  <span class="lang-en" style="display:none;">Source:</span>
+                </label>
+                <select id="tableFilterSource" class="table-select-filter">
+                  <option value="all">전체 출처 (All)</option>
+                  {% for src in table_sources %}
+                    <option value="{{ src }}">{{ src }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="table-filter-item">
+                <label for="tableFilterConfidence" class="table-filter-label">
+                  <span class="lang-ko">신뢰도:</span>
+                  <span class="lang-en" style="display:none;">Confidence:</span>
+                </label>
+                <select id="tableFilterConfidence" class="table-select-filter">
+                  <option value="all">전체 신뢰도 (All)</option>
+                  <option value="높음">높음 (High)</option>
+                  <option value="보통">보통 (Medium)</option>
+                  <option value="낮음">낮음 (Low)</option>
+                </select>
+              </div>
+
+              <div class="table-filter-item table-search-item">
+                <label for="briefingTableSearch" class="table-filter-label">
+                  <span class="lang-ko">검색:</span>
+                  <span class="lang-en" style="display:none;">Search:</span>
+                </label>
+                <input type="text" id="briefingTableSearch" placeholder="기사 제목 검색..." aria-label="기사 검색">
+              </div>
+
+              <div class="table-filter-item">
+                <label for="tablePageSize" class="table-filter-label">
+                  <span class="lang-ko">보기:</span>
+                  <span class="lang-en" style="display:none;">Show:</span>
+                </label>
+                <select id="tablePageSize" class="table-select-filter">
+                  <option value="10" selected>10개씩</option>
+                  <option value="20">20개씩</option>
+                  <option value="50">50개씩</option>
+                  <option value="all">전체 보기</option>
+                </select>
+              </div>
+
+              <button type="button" id="tableFilterReset" class="table-reset-btn" title="필터 초기화 (Reset Filters)">
+                <i data-lucide="rotate-ccw"></i>
+                <span>
+                  <span class="lang-ko">초기화</span>
+                  <span class="lang-en" style="display:none;">Reset</span>
+                </span>
+              </button>
             </div>
           </div>
 
@@ -464,35 +539,60 @@
             <table class="briefing-table" id="briefingTable">
               <thead>
                 <tr>
-                  <th style="width: 100px;">
-                    <span class="lang-ko">우선순위</span>
-                    <span class="lang-en" style="display:none;">Priority</span>
+                  <th style="width: 105px;" data-sort="priority" class="sortable-th" role="button" tabindex="0" title="우선순위순 정렬">
+                    <div class="th-content">
+                      <span class="lang-ko">우선순위</span>
+                      <span class="lang-en" style="display:none;">Priority</span>
+                      <span class="sort-icon" data-sort-icon>↕</span>
+                    </div>
                   </th>
-                  <th style="width: 130px;">
-                    <span class="lang-ko">분야</span>
-                    <span class="lang-en" style="display:none;">Category</span>
+                  <th style="width: 135px;" data-sort="category" class="sortable-th" role="button" tabindex="0" title="분야순 정렬">
+                    <div class="th-content">
+                      <span class="lang-ko">분야</span>
+                      <span class="lang-en" style="display:none;">Category</span>
+                      <span class="sort-icon" data-sort-icon>↕</span>
+                    </div>
                   </th>
-                  <th>
-                    <span class="lang-ko">기사 제목 (원문 링크)</span>
-                    <span class="lang-en" style="display:none;">Article Title (Direct Link)</span>
+                  <th data-sort="title" class="sortable-th" role="button" tabindex="0" title="기사 제목순 정렬">
+                    <div class="th-content">
+                      <span class="lang-ko">기사 제목 (원문 링크)</span>
+                      <span class="lang-en" style="display:none;">Article Title (Direct Link)</span>
+                      <span class="sort-icon" data-sort-icon>↕</span>
+                    </div>
                   </th>
-                  <th style="width: 130px;">
-                    <span class="lang-ko">출처</span>
-                    <span class="lang-en" style="display:none;">Source</span>
+                  <th style="width: 140px;" data-sort="source" class="sortable-th" role="button" tabindex="0" title="출처순 정렬">
+                    <div class="th-content">
+                      <span class="lang-ko">출처</span>
+                      <span class="lang-en" style="display:none;">Source</span>
+                      <span class="sort-icon" data-sort-icon>↕</span>
+                    </div>
                   </th>
-                  <th style="width: 80px;">
-                    <span class="lang-ko">신뢰도</span>
-                    <span class="lang-en" style="display:none;">Confidence</span>
+                  <th style="width: 95px;" data-sort="confidence" class="sortable-th" role="button" tabindex="0" title="신뢰도순 정렬">
+                    <div class="th-content">
+                      <span class="lang-ko">신뢰도</span>
+                      <span class="lang-en" style="display:none;">Confidence</span>
+                      <span class="sort-icon" data-sort-icon>↕</span>
+                    </div>
                   </th>
-                  <th style="width: 110px;">
-                    <span class="lang-ko">일시</span>
-                    <span class="lang-en" style="display:none;">Date</span>
+                  <th style="width: 110px;" data-sort="date" class="sortable-th" role="button" tabindex="0" title="일시순 정렬">
+                    <div class="th-content">
+                      <span class="lang-ko">일시</span>
+                      <span class="lang-en" style="display:none;">Date</span>
+                      <span class="sort-icon" data-sort-icon>↕</span>
+                    </div>
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {% for row in all_table_views %}
-                  <tr data-priority="{{ row.priority.level }}">
+                  <tr data-priority="{{ row.priority.level }}"
+                      data-score="{{ row.priority.score }}"
+                      data-category="{{ row.primary_category_ko }}"
+                      data-title="{{ row.title_ko }}"
+                      data-source="{{ row.publisher_display }}"
+                      data-confidence="{{ row.transparency.confidence_label_ko }}"
+                      data-confidence-rank="{% if row.transparency.confidence_label|lower == 'high' %}3{% elif row.transparency.confidence_label|lower == 'medium' %}2{% else %}1{% endif %}"
+                      data-date="{{ row.published_time }}">
                     <td>
                       <span class="priority-badge {{ row.priority.level }} badge-sm">
                         <span class="lang-ko">{{ row.priority.label_ko }}</span>
@@ -529,6 +629,17 @@
                 {% endfor %}
               </tbody>
             </table>
+          </div>
+
+          <!-- Table Pagination & Counter -->
+          <div class="table-pagination-container" id="tablePagination">
+            <div class="pagination-info" id="tablePaginationInfo">
+              <span class="lang-ko">0-0 / 전체 0건</span>
+              <span class="lang-en" style="display:none;">0-0 / 0 items</span>
+            </div>
+            <div class="pagination-controls" id="tablePaginationControls">
+              <!-- Dynamically populated page buttons -->
+            </div>
           </div>
         </section>
       {% endif %}

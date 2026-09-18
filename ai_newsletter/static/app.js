@@ -109,6 +109,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const metricCards = Array.from(document.querySelectorAll(".metric-card[data-priority-filter]"));
   const briefingTable = document.getElementById("briefingTable");
   const tableSearchInput = document.getElementById("briefingTableSearch");
+  const tableFilterCategory = document.getElementById("tableFilterCategory");
+  const tableFilterSource = document.getElementById("tableFilterSource");
+  const tableFilterConfidence = document.getElementById("tableFilterConfidence");
+  const tablePageSize = document.getElementById("tablePageSize");
+  const tableFilterReset = document.getElementById("tableFilterReset");
+  const tableFilterCount = document.getElementById("tableFilterCount");
+  const tablePaginationInfo = document.getElementById("tablePaginationInfo");
+  const tablePaginationControls = document.getElementById("tablePaginationControls");
 
   let activeSection = "all";
   let activeRegion = "all";
@@ -116,16 +124,255 @@ document.addEventListener("DOMContentLoaded", () => {
   let activeSourceType = "all";
   let activePriority = "all";
 
-  const applyTableFilter = () => {
+  // ── Table State & Management (Sorting, Filtering, Pagination) ───────────────
+  let currentSortCol = "priority";
+  let currentSortDir = "desc";
+  let currentPage = 1;
+  let pageSize = 10;
+
+  const initTableManager = () => {
     if (!briefingTable) return;
-    const query = tableSearchInput ? tableSearchInput.value.toLowerCase().trim() : "";
-    const rows = briefingTable.querySelectorAll("tbody tr");
-    rows.forEach((row) => {
-      const rowPriority = row.dataset.priority || "";
-      const pMatch = activePriority === "all" || rowPriority === activePriority;
-      const tMatch = !query || row.textContent.toLowerCase().includes(query);
-      row.style.display = (pMatch && tMatch) ? "" : "none";
+
+    const tbody = briefingTable.querySelector("tbody");
+    if (!tbody) return;
+
+    const allRows = Array.from(tbody.querySelectorAll("tr"));
+    const sortHeaders = Array.from(briefingTable.querySelectorAll("th.sortable-th"));
+
+    const updateSortIcons = () => {
+      sortHeaders.forEach((th) => {
+        const col = th.dataset.sort;
+        const icon = th.querySelector("[data-sort-icon]");
+        if (col === currentSortCol) {
+          th.classList.add("sort-active");
+          if (icon) icon.textContent = currentSortDir === "asc" ? "▲" : "▼";
+        } else {
+          th.classList.remove("sort-active");
+          if (icon) icon.textContent = "↕";
+        }
+      });
+    };
+
+    const renderTable = () => {
+      const categoryVal = tableFilterCategory ? tableFilterCategory.value : "all";
+      const sourceVal = tableFilterSource ? tableFilterSource.value : "all";
+      const confidenceVal = tableFilterConfidence ? tableFilterConfidence.value : "all";
+      const query = tableSearchInput ? tableSearchInput.value.toLowerCase().trim() : "";
+
+      // 1. Filter rows
+      const filteredRows = allRows.filter((row) => {
+        const rowPriority = row.dataset.priority || "";
+        const rowCategory = row.dataset.category || "";
+        const rowSource = row.dataset.source || "";
+        const rowConfidence = row.dataset.confidence || "";
+
+        const priorityMatch = activePriority === "all" || rowPriority === activePriority;
+        const categoryMatch = categoryVal === "all" || rowCategory === categoryVal;
+        const sourceMatch = sourceVal === "all" || rowSource === sourceVal;
+        const confidenceMatch = confidenceVal === "all" || rowConfidence === confidenceVal;
+        const searchMatch = !query || row.textContent.toLowerCase().includes(query);
+
+        return priorityMatch && categoryMatch && sourceMatch && confidenceMatch && searchMatch;
+      });
+
+      // 2. Sort rows
+      filteredRows.sort((a, b) => {
+        let valA, valB;
+        if (currentSortCol === "priority") {
+          valA = parseFloat(a.dataset.score) || 0;
+          valB = parseFloat(b.dataset.score) || 0;
+          return currentSortDir === "asc" ? valA - valB : valB - valA;
+        } else if (currentSortCol === "confidence") {
+          valA = parseInt(a.dataset.confidenceRank, 10) || 0;
+          valB = parseInt(b.dataset.confidenceRank, 10) || 0;
+          return currentSortDir === "asc" ? valA - valB : valB - valA;
+        } else if (currentSortCol === "date") {
+          valA = a.dataset.date || "";
+          valB = b.dataset.date || "";
+          return currentSortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        } else if (currentSortCol === "category") {
+          valA = a.dataset.category || "";
+          valB = b.dataset.category || "";
+          return currentSortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        } else if (currentSortCol === "source") {
+          valA = a.dataset.source || "";
+          valB = b.dataset.source || "";
+          return currentSortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        } else {
+          // title
+          valA = a.dataset.title || "";
+          valB = b.dataset.title || "";
+          return currentSortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+      });
+
+      // 3. Pagination calculation
+      const totalFiltered = filteredRows.length;
+      const effectivePageSize = pageSize === "all" ? (totalFiltered || 1) : parseInt(pageSize, 10);
+      const totalPages = Math.max(1, Math.ceil(totalFiltered / effectivePageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+      if (currentPage < 1) currentPage = 1;
+
+      const startIndex = (currentPage - 1) * effectivePageSize;
+      const endIndex = Math.min(startIndex + effectivePageSize, totalFiltered);
+
+      // Hide all rows, re-append sorted, show page slice
+      allRows.forEach((r) => (r.style.display = "none"));
+      filteredRows.forEach((row, idx) => {
+        tbody.appendChild(row);
+        if (idx >= startIndex && idx < endIndex) {
+          row.style.display = "";
+        } else {
+          row.style.display = "none";
+        }
+      });
+
+      // 4. Update info counts
+      const isKo = !document.documentElement.classList.contains("lang-en-active");
+      if (tableFilterCount) {
+        tableFilterCount.textContent = isKo ? `총 ${totalFiltered}건` : `Total ${totalFiltered}`;
+      }
+
+      if (tablePaginationInfo) {
+        if (totalFiltered === 0) {
+          tablePaginationInfo.textContent = isKo ? "검색 결과 0건" : "0 results";
+        } else {
+          tablePaginationInfo.textContent = isKo
+            ? `${startIndex + 1}-${endIndex} / 전체 ${totalFiltered}건`
+            : `${startIndex + 1}-${endIndex} of ${totalFiltered}`;
+        }
+      }
+
+      // 5. Render page buttons
+      if (tablePaginationControls) {
+        tablePaginationControls.innerHTML = "";
+        if (totalPages > 1) {
+          const prevBtn = document.createElement("button");
+          prevBtn.type = "button";
+          prevBtn.className = "page-btn";
+          prevBtn.textContent = "«";
+          prevBtn.disabled = currentPage === 1;
+          prevBtn.title = "이전 페이지";
+          prevBtn.addEventListener("click", () => {
+            if (currentPage > 1) {
+              currentPage -= 1;
+              renderTable();
+            }
+          });
+          tablePaginationControls.appendChild(prevBtn);
+
+          let startPage = Math.max(1, currentPage - 2);
+          let endPage = Math.min(totalPages, currentPage + 2);
+          if (currentPage <= 3) {
+            endPage = Math.min(totalPages, 5);
+          } else if (currentPage >= totalPages - 2) {
+            startPage = Math.max(1, totalPages - 4);
+          }
+
+          for (let p = startPage; p <= endPage; p++) {
+            const pageBtn = document.createElement("button");
+            pageBtn.type = "button";
+            pageBtn.className = `page-btn ${p === currentPage ? "active" : ""}`;
+            pageBtn.textContent = p;
+            pageBtn.addEventListener("click", () => {
+              currentPage = p;
+              renderTable();
+            });
+            tablePaginationControls.appendChild(pageBtn);
+          }
+
+          const nextBtn = document.createElement("button");
+          nextBtn.type = "button";
+          nextBtn.className = "page-btn";
+          nextBtn.textContent = "»";
+          nextBtn.disabled = currentPage === totalPages;
+          nextBtn.title = "다음 페이지";
+          nextBtn.addEventListener("click", () => {
+            if (currentPage < totalPages) {
+              currentPage += 1;
+              renderTable();
+            }
+          });
+          tablePaginationControls.appendChild(nextBtn);
+        }
+      }
+
+      updateSortIcons();
+    };
+
+    // Sort Click Handlers
+    sortHeaders.forEach((th) => {
+      const col = th.dataset.sort;
+      const handleSort = () => {
+        if (currentSortCol === col) {
+          currentSortDir = currentSortDir === "asc" ? "desc" : "asc";
+        } else {
+          currentSortCol = col;
+          currentSortDir = (col === "priority" || col === "confidence" || col === "date") ? "desc" : "asc";
+        }
+        currentPage = 1;
+        renderTable();
+      };
+      th.addEventListener("click", handleSort);
+      th.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleSort();
+        }
+      });
     });
+
+    // Filter Change Listeners
+    if (tableFilterCategory) {
+      tableFilterCategory.addEventListener("change", () => {
+        currentPage = 1;
+        renderTable();
+      });
+    }
+    if (tableFilterSource) {
+      tableFilterSource.addEventListener("change", () => {
+        currentPage = 1;
+        renderTable();
+      });
+    }
+    if (tableFilterConfidence) {
+      tableFilterConfidence.addEventListener("change", () => {
+        currentPage = 1;
+        renderTable();
+      });
+    }
+    if (tableSearchInput) {
+      tableSearchInput.addEventListener("input", () => {
+        currentPage = 1;
+        renderTable();
+      });
+    }
+    if (tablePageSize) {
+      tablePageSize.addEventListener("change", () => {
+        pageSize = tablePageSize.value;
+        currentPage = 1;
+        renderTable();
+      });
+    }
+    if (tableFilterReset) {
+      tableFilterReset.addEventListener("click", () => {
+        if (tableFilterCategory) tableFilterCategory.value = "all";
+        if (tableFilterSource) tableFilterSource.value = "all";
+        if (tableFilterConfidence) tableFilterConfidence.value = "all";
+        if (tableSearchInput) tableSearchInput.value = "";
+        if (tablePageSize) {
+          tablePageSize.value = "10";
+          pageSize = 10;
+        }
+        currentSortCol = "priority";
+        currentSortDir = "desc";
+        currentPage = 1;
+        renderTable();
+      });
+    }
+
+    window._renderBriefingTable = renderTable;
+    renderTable();
   };
 
   const applyFilters = () => {
@@ -171,7 +418,9 @@ document.addEventListener("DOMContentLoaded", () => {
       filterEmpty.style.display = totalVisible === 0 ? "block" : "none";
     }
 
-    applyTableFilter();
+    if (window._renderBriefingTable) {
+      window._renderBriefingTable();
+    }
   };
 
   metricCards.forEach((card) => {
@@ -459,12 +708,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setTimeout(checkAdContainers, 1500);
   setTimeout(checkAdContainers, 3500);
 
-  // Live table search for All Briefings Table
-  if (tableSearchInput && briefingTable) {
-    tableSearchInput.addEventListener("input", () => {
-      applyTableFilter();
-    });
-  }
+  // Initialize briefing table sorting, filtering, and pagination
+  initTableManager();
 });
 
 
