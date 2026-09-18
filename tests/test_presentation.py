@@ -258,5 +258,56 @@ def test_display_topics_str_and_clean_key_points():
     assert view.transparency.sources_display == "The Information"
 
 
+def test_empty_entities_skipped_cleanly():
+    from ai_newsletter.presentation import display_key_points, prepare_article_view
+
+    # Case 1: Article with no entities
+    a1 = Article(
+        title="Article without entities",
+        url="https://example.com/no-entities",
+        source="TechCrunch",
+        category="frontier_models",
+        entities=[],
+        key_points=[
+            "출처 (Source): TechCrunch",
+            "핵심 분야 (Topics): AI Regulation",
+            "발행처: TechCrunch",
+        ],
+    )
+    assert display_key_points(a1) == []
+    v1 = prepare_article_view(a1)
+    assert v1.key_points == []
+
+    # Case 2: Article with empty entity string
+    a2 = Article(
+        title="Article with blank entity placeholder",
+        url="https://example.com/blank-entity",
+        source="The Verge",
+        category="frontier_models",
+        entities=[],
+        key_points=[
+            "주요 기업/모델 (Entities): ",
+            "출처 (Source): The Verge",
+        ],
+    )
+    assert display_key_points(a2) == []
+    v2 = prepare_article_view(a2)
+    assert v2.key_points == []
+
+    # Case 3: Article with valid entities in entities field
+    a3 = Article(
+        title="Article with entities in field",
+        url="https://example.com/has-entities",
+        source="NVIDIA",
+        category="frontier_models",
+        entities=["NVIDIA", "Google"],
+        key_points=[],
+    )
+    pts3 = display_key_points(a3)
+    assert len(pts3) == 1
+    assert "NVIDIA, Google" in pts3[0]
+
+
+
 
 

@@ -409,9 +409,21 @@ def display_key_points(article: Article) -> list[str]:
             or ("topics" in p_lower and ("분야" in p_str or "토픽" in p_str))
         ):
             continue
+        # If this is an Entities point, verify that entities are non-empty and valid
+        if "entities" in p_lower or "주요 기업" in p_str or "기업/모델" in p_str:
+            val = p_str.split(":", 1)[-1].strip() if ":" in p_str else ""
+            if not val or val.lower() in ("none", "null", "[]", "없음", "미지정"):
+                continue
         if p_str not in seen:
             seen.add(p_str)
             cleaned.append(p_str)
+
+    # Fallback to article.entities if cleaned is empty and article has entities
+    if not cleaned and article.entities:
+        valid_entities = [e.strip() for e in article.entities if e and e.strip() and e.lower() not in ("none", "null", "없음")]
+        if valid_entities:
+            cleaned.append(f"주요 기업/모델 (Entities): {', '.join(valid_entities[:4])}")
+
     return cleaned
 
 
