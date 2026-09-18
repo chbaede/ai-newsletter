@@ -246,4 +246,24 @@ def test_health_check_database_failure_and_degraded_conditions(tmp_path):
     assert data_bad["latest_issue_date"] is None
 
 
+def test_main_hub_links_and_priority_filter_attributes(client):
+    res = client.get("/issues/2026-09-17")
+    assert res.status_code == 200
+    html = res.text
+
+    # Main Hub link present
+    assert 'https://main.yocto.co.kr/' in html
+    assert 'class="hub-link-action"' in html
+    assert 'class="rail-hub-btn"' in html
+
+    # Priority filter metric cards present
+    assert 'data-priority-filter="all"' in html
+    assert 'data-priority-filter="critical"' in html
+    assert 'data-priority-filter="high"' in html
+
+    # Priority attributes on cards and table rows
+    assert 'data-priority=' in html
+
+
+
 

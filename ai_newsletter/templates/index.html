@@ -12,6 +12,16 @@
         <p>Frontier · Agents · Chips · Policy</p>
       </div>
     </div>
+    <div class="rail-hub-wrapper">
+      <a href="https://main.yocto.co.kr/" class="rail-hub-btn" target="_blank" rel="noopener noreferrer" title="메인 허브 바로가기 (yocto.co.kr)">
+        <i data-lucide="home"></i>
+        <span>
+          <span class="lang-ko">메인 허브</span>
+          <span class="lang-en" style="display:none;">Main Hub</span>
+        </span>
+        <i data-lucide="external-link" class="rail-hub-ext"></i>
+      </a>
+    </div>
     <form class="collect-form" data-collect-form data-admin-only>
       <button type="submit" class="primary-action">
         <i data-lucide="refresh-cw"></i>
@@ -67,6 +77,14 @@
       </button>
 
       <div style="margin-left: auto; display: flex; gap: 8px; align-items: center;">
+        <a href="https://main.yocto.co.kr/" class="hub-link-action" target="_blank" rel="noopener noreferrer" title="메인 허브 바로가기 (yocto.co.kr)">
+          <i data-lucide="globe"></i>
+          <span>
+            <span class="lang-ko">메인 허브</span>
+            <span class="lang-en" style="display:none;">Main Hub</span>
+          </span>
+          <i data-lucide="external-link" class="hub-ext-icon"></i>
+        </a>
         <button type="button" class="theme-toggle-action" data-theme-toggle title="나이트 모드 / 라이트 모드 전환 (Night Mode Toggle)">
           <i data-lucide="moon" class="icon-moon"></i>
           <i data-lucide="sun" class="icon-sun" style="display:none;"></i>
@@ -116,24 +134,42 @@
           </span>
         </div>
         <div class="metric-grid">
-          <div class="metric-card">
-            <div class="metric-label">
-              <span class="lang-ko">총 브리핑</span>
-              <span class="lang-en" style="display:none;">Total News</span>
+          <div class="metric-card active" data-priority-filter="all" role="button" tabindex="0" title="전체 브리핑 보기 (Show All)">
+            <div class="metric-header-row">
+              <div class="metric-label">
+                <span class="lang-ko">총 브리핑</span>
+                <span class="lang-en" style="display:none;">Total News</span>
+              </div>
+              <span class="metric-filter-tag">
+                <span class="lang-ko">전체</span>
+                <span class="lang-en" style="display:none;">All</span>
+              </span>
             </div>
             <div class="metric-val">{{ issue_metrics.total }}</div>
           </div>
-          <div class="metric-card critical">
-            <div class="metric-label">
-              <span class="lang-ko">최우선 뉴스</span>
-              <span class="lang-en" style="display:none;">Critical</span>
+          <div class="metric-card critical" data-priority-filter="critical" role="button" tabindex="0" title="최우선 뉴스만 필터링 (Filter Critical)">
+            <div class="metric-header-row">
+              <div class="metric-label">
+                <span class="lang-ko">최우선 뉴스</span>
+                <span class="lang-en" style="display:none;">Critical</span>
+              </div>
+              <span class="metric-filter-tag">
+                <span class="lang-ko">필터</span>
+                <span class="lang-en" style="display:none;">Filter</span>
+              </span>
             </div>
             <div class="metric-val">{{ issue_metrics.critical }}</div>
           </div>
-          <div class="metric-card high">
-            <div class="metric-label">
-              <span class="lang-ko">높음</span>
-              <span class="lang-en" style="display:none;">High</span>
+          <div class="metric-card high" data-priority-filter="high" role="button" tabindex="0" title="높음 우선순위 뉴스 필터링 (Filter High)">
+            <div class="metric-header-row">
+              <div class="metric-label">
+                <span class="lang-ko">높음</span>
+                <span class="lang-en" style="display:none;">High</span>
+              </div>
+              <span class="metric-filter-tag">
+                <span class="lang-ko">필터</span>
+                <span class="lang-en" style="display:none;">Filter</span>
+              </span>
             </div>
             <div class="metric-val">{{ issue_metrics.high }}</div>
           </div>
@@ -262,7 +298,8 @@
                          data-section="{{ sec.key }}"
                          data-regions="{{ view.all_region_keys|join(' ') }}"
                          data-topics="{{ view.topic_keys|join(' ') }}"
-                         data-source-type="{{ view.source_type }}">
+                         data-source-type="{{ view.source_type }}"
+                         data-priority="{{ view.priority.level }}">
                   <div class="card-meta">
                     <div class="meta-left">
                       <span class="priority-badge {{ view.priority.level }}">
@@ -455,7 +492,7 @@
               </thead>
               <tbody>
                 {% for row in all_table_views %}
-                  <tr>
+                  <tr data-priority="{{ row.priority.level }}">
                     <td>
                       <span class="priority-badge {{ row.priority.level }} badge-sm">
                         <span class="lang-ko">{{ row.priority.label_ko }}</span>

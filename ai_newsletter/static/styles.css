@@ -230,6 +230,46 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
 }
 
+.rail-hub-wrapper {
+  margin: 0 0 16px;
+}
+
+.rail-hub-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.rail-hub-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.rail-hub-btn svg {
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+}
+
+.rail-hub-ext {
+  margin-left: auto;
+  opacity: 0.6;
+  width: 12px !important;
+  height: 12px !important;
+}
+
 .collect-form {
   margin-bottom: 20px;
 }
@@ -403,6 +443,44 @@ html.dark-mode .view-tab.active {
   height: 15px;
 }
 
+.hub-link-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hub-link-action:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.hub-link-action svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+.hub-link-action .hub-ext-icon {
+  width: 11px;
+  height: 11px;
+  opacity: 0.6;
+  margin-left: 1px;
+}
+
 /* ── Issue Header ────────────────────────────────────────────────────────── */
 .issue-header {
   display: flex;
@@ -508,11 +586,13 @@ html.dark-mode .send-action {
   flex-direction: column;
   justify-content: space-between;
   padding: 16px 20px;
-  border: 1px solid var(--line);
+  border: 2px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow-card);
-  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  cursor: pointer;
+  user-select: none;
 }
 
 .metric-card:hover {
@@ -521,12 +601,35 @@ html.dark-mode .send-action {
   box-shadow: var(--shadow-hover);
 }
 
+.metric-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .metric-label {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.metric-filter-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  transition: all 0.15s ease;
+}
+
+.metric-card:hover .metric-filter-tag {
+  border-color: var(--line-strong);
+  color: var(--ink);
 }
 
 .metric-val {
@@ -544,6 +647,41 @@ html.dark-mode .send-action {
 
 .metric-card.high .metric-val {
   color: var(--high);
+}
+
+/* Active Priority Filter States */
+.metric-card.active {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-card);
+}
+
+.metric-card.active .metric-filter-tag {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.metric-card.critical.active {
+  border-color: var(--critical);
+  box-shadow: 0 0 0 3px var(--critical-soft), var(--shadow-card);
+}
+
+.metric-card.critical.active .metric-filter-tag {
+  background: var(--critical);
+  border-color: var(--critical);
+  color: #ffffff;
+}
+
+.metric-card.high.active {
+  border-color: var(--high);
+  box-shadow: 0 0 0 3px var(--high-soft), var(--shadow-card);
+}
+
+.metric-card.high.active .metric-filter-tag {
+  background: var(--high);
+  border-color: var(--high);
+  color: #ffffff;
 }
 
 /* ── Filter Controls & Taxonomy Pills ────────────────────────────────────── */

@@ -106,10 +106,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Filtering logic
   const sectionButtons = Array.from(document.querySelectorAll("[data-section-filter]"));
+  const metricCards = Array.from(document.querySelectorAll(".metric-card[data-priority-filter]"));
+  const briefingTable = document.getElementById("briefingTable");
+  const tableSearchInput = document.getElementById("briefingTableSearch");
+
   let activeSection = "all";
   let activeRegion = "all";
   let activeTopic = "all";
   let activeSourceType = "all";
+  let activePriority = "all";
+
+  const applyTableFilter = () => {
+    if (!briefingTable) return;
+    const query = tableSearchInput ? tableSearchInput.value.toLowerCase().trim() : "";
+    const rows = briefingTable.querySelectorAll("tbody tr");
+    rows.forEach((row) => {
+      const rowPriority = row.dataset.priority || "";
+      const pMatch = activePriority === "all" || rowPriority === activePriority;
+      const tMatch = !query || row.textContent.toLowerCase().includes(query);
+      row.style.display = (pMatch && tMatch) ? "" : "none";
+    });
+  };
 
   const applyFilters = () => {
     let totalVisible = 0;
@@ -126,13 +143,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const regions = (card.dataset.regions || "").split(" ");
         const topics = (card.dataset.topics || "").split(" ");
         const sourceTypes = (card.dataset.sourceType || "").split(" ");
+        const cardPriority = card.dataset.priority || "";
 
         const sectionMatch = activeSection === "all" || cardSec === activeSection;
         const regionMatch = activeRegion === "all" || regions.includes(activeRegion);
         const topicMatch = activeTopic === "all" || topics.includes(activeTopic);
         const sourceMatch = activeSourceType === "all" || sourceTypes.includes(activeSourceType);
+        const priorityMatch = activePriority === "all" || cardPriority === activePriority;
 
-        if (sectionMatch && regionMatch && topicMatch && sourceMatch) {
+        if (sectionMatch && regionMatch && topicMatch && sourceMatch && priorityMatch) {
           card.style.display = "";
           visibleInSection += 1;
         } else {
@@ -151,7 +170,39 @@ document.addEventListener("DOMContentLoaded", () => {
     if (filterEmpty) {
       filterEmpty.style.display = totalVisible === 0 ? "block" : "none";
     }
+
+    applyTableFilter();
   };
+
+  metricCards.forEach((card) => {
+    const handlePriorityClick = () => {
+      const filterVal = card.dataset.priorityFilter;
+      if (filterVal === activePriority && filterVal !== "all") {
+        // Toggle back to 'all' if already selected
+        activePriority = "all";
+      } else {
+        activePriority = filterVal;
+      }
+
+      metricCards.forEach((c) => {
+        if (c.dataset.priorityFilter === activePriority) {
+          c.classList.add("active");
+        } else {
+          c.classList.remove("active");
+        }
+      });
+
+      applyFilters();
+    };
+
+    card.addEventListener("click", handlePriorityClick);
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handlePriorityClick();
+      }
+    });
+  });
 
   sectionButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -409,16 +460,9 @@ document.addEventListener("DOMContentLoaded", () => {
   setTimeout(checkAdContainers, 3500);
 
   // Live table search for All Briefings Table
-  const tableSearchInput = document.getElementById("briefingTableSearch");
-  const briefingTable = document.getElementById("briefingTable");
   if (tableSearchInput && briefingTable) {
-    tableSearchInput.addEventListener("input", (e) => {
-      const query = e.target.value.toLowerCase().trim();
-      const rows = briefingTable.querySelectorAll("tbody tr");
-      rows.forEach((row) => {
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(query) ? "" : "none";
-      });
+    tableSearchInput.addEventListener("input", () => {
+      applyTableFilter();
     });
   }
 });
