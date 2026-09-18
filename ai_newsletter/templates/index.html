@@ -704,7 +704,7 @@
   <div class="modal-card">
     <div class="modal-header">
       <div class="modal-title-group">
-        <i data-lucide="settings" class="modal-icon"></i>
+        <i data-lucide="mail" class="modal-icon"></i>
         <div>
           <h3 class="modal-title" id="mailModalTitle">
             <span class="lang-ko">이메일 SMTP 발송 설정</span>
@@ -722,50 +722,97 @@
     </div>
 
     <div class="modal-body">
-      <form class="settings-form" data-mail-settings-form>
-        <div class="form-grid">
-          <div class="form-row">
-            <label>SMTP Host</label>
-            <input type="text" name="smtp_host" placeholder="smtp.gmail.com">
+      <form data-mail-settings-form>
+
+        <!-- Section 1: SMTP Server -->
+        <div class="mail-section">
+          <div class="mail-section-label">
+            <i data-lucide="server" style="width:14px;height:14px;"></i>
+            <span class="lang-ko">SMTP 서버</span>
+            <span class="lang-en" style="display:none;">SMTP Server</span>
           </div>
-          <div class="form-row">
-            <label>SMTP Port</label>
-            <input type="number" name="smtp_port" value="587">
+          <div class="mail-form-grid mail-grid-2">
+            <div class="mail-field">
+              <label>Host</label>
+              <input type="text" name="smtp_host" placeholder="smtp.gmail.com">
+            </div>
+            <div class="mail-field mail-field-short">
+              <label>Port</label>
+              <input type="number" name="smtp_port" value="587">
+            </div>
           </div>
         </div>
-        <div class="form-grid">
-          <div class="form-row">
-            <label>SMTP User (Username / Email)</label>
-            <input type="text" name="smtp_user" placeholder="user@example.com">
+
+        <!-- Section 2: Authentication -->
+        <div class="mail-section">
+          <div class="mail-section-label">
+            <i data-lucide="lock" style="width:14px;height:14px;"></i>
+            <span class="lang-ko">인증 정보</span>
+            <span class="lang-en" style="display:none;">Authentication</span>
           </div>
-          <div class="form-row">
-            <label>SMTP Password <small data-password-state style="color:var(--muted);margin-left:6px;"></small></label>
-            <input type="password" name="smtp_password" placeholder="App Password">
+          <div class="mail-form-grid mail-grid-2">
+            <div class="mail-field">
+              <label>
+                <span class="lang-ko">사용자 (이메일)</span>
+                <span class="lang-en" style="display:none;">Username / Email</span>
+              </label>
+              <input type="text" name="smtp_user" placeholder="user@example.com">
+            </div>
+            <div class="mail-field">
+              <label>
+                <span class="lang-ko">비밀번호</span>
+                <span class="lang-en" style="display:none;">Password</span>
+                <small data-password-state class="mail-password-badge"></small>
+              </label>
+              <input type="password" name="smtp_password" placeholder="App Password">
+            </div>
+          </div>
+          <div class="mail-tls-row">
+            <label class="mail-checkbox-label">
+              <input type="checkbox" name="smtp_tls" checked>
+              <span>
+                <span class="lang-ko">STARTTLS 보안 연결 사용</span>
+                <span class="lang-en" style="display:none;">Use STARTTLS Secure Connection</span>
+              </span>
+            </label>
           </div>
         </div>
-        <div class="form-row">
-          <label>Sender Address (From)</label>
-          <input type="text" name="smtp_from" placeholder="AI Newsletter <newsletter@example.com>">
+
+        <!-- Section 3: Sender & Recipients -->
+        <div class="mail-section">
+          <div class="mail-section-label">
+            <i data-lucide="send" style="width:14px;height:14px;"></i>
+            <span class="lang-ko">발신 / 수신</span>
+            <span class="lang-en" style="display:none;">Sender / Recipients</span>
+          </div>
+          <div class="mail-field">
+            <label>
+              <span class="lang-ko">발신 주소 (From)</span>
+              <span class="lang-en" style="display:none;">Sender Address (From)</span>
+            </label>
+            <input type="text" name="smtp_from" placeholder="AI Newsletter <newsletter@example.com>">
+          </div>
+          <div class="mail-field" style="margin-top:12px;">
+            <label>
+              <span class="lang-ko">수신자 (To)</span>
+              <span class="lang-en" style="display:none;">Recipients (Newsletter To)</span>
+            </label>
+            <input type="text" name="newsletter_to" placeholder="subscriber1@example.com, subscriber2@example.com">
+            <small class="mail-field-hint">
+              <span class="lang-ko">여러 수신자는 쉼표(,)로 구분</span>
+              <span class="lang-en" style="display:none;">Separate multiple recipients with commas</span>
+            </small>
+          </div>
         </div>
-        <div class="form-row">
-          <label>Recipients (Newsletter To)</label>
-          <input type="text" name="newsletter_to" placeholder="subscriber1@example.com, subscriber2@example.com">
-        </div>
-        <div class="form-row checkbox-row">
-          <label class="custom-checkbox-label">
-            <input type="checkbox" name="smtp_tls" checked>
-            <span>
-              <span class="lang-ko">STARTTLS 보안 연결 사용</span>
-              <span class="lang-en" style="display:none;">Use STARTTLS Secure Connection</span>
-            </span>
-          </label>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="modal-cancel-btn" data-close-mail-settings>
+
+        <!-- Actions -->
+        <div class="mail-modal-actions">
+          <button type="button" class="mail-btn-cancel" data-close-mail-settings>
             <span class="lang-ko">닫기</span>
             <span class="lang-en" style="display:none;">Close</span>
           </button>
-          <button type="submit" class="primary-action">
+          <button type="submit" class="mail-btn-save">
+            <i data-lucide="save" style="width:15px;height:15px;"></i>
             <span class="lang-ko">설정 저장</span>
             <span class="lang-en" style="display:none;">Save Settings</span>
           </button>
