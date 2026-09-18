@@ -61,7 +61,7 @@
           <span class="lang-en" style="display:none;">News</span>
         </span>
       </button>
-      <button type="button" class="view-tab" data-view-tab="settings" data-admin-only aria-pressed="false">
+      <button type="button" class="view-tab" data-open-mail-settings aria-pressed="false" title="이메일 발송 및 SMTP 설정">
         <i data-lucide="settings"></i>
         <span>
           <span class="lang-ko">메일 설정</span>
@@ -111,7 +111,14 @@
             <span class="lang-en" style="display:none;">Prioritized intelligence on frontier models, autonomous agents, semiconductors, and policy.</span>
           </p>
         </div>
-        <div class="header-actions" style="display: flex; gap: 0.5rem;">
+        <div class="header-actions" style="display: flex; gap: 0.5rem; align-items: center;">
+          <button type="button" class="mail-settings-btn" data-open-mail-settings title="이메일 발송 및 SMTP 설정">
+            <i data-lucide="settings"></i>
+            <span>
+              <span class="lang-ko">메일 설정</span>
+              <span class="lang-en" style="display:none;">Mail Settings</span>
+            </span>
+          </button>
           <form data-send-form data-issue-date="{{ issue.issue_date }}" data-admin-only>
             <button type="submit" class="send-action">
               <i data-lucide="send"></i>
@@ -659,58 +666,6 @@
     {% endif %}
     </section>
 
-    <!-- Mail Settings Panel -->
-    <section data-view-panel="settings" style="display:none;" data-admin-only>
-      <div class="panel-header">
-        <h3>
-          <span class="lang-ko">이메일 SMTP 발송 설정</span>
-          <span class="lang-en" style="display:none;">Mail SMTP Configuration</span>
-        </h3>
-        <p>
-          <span class="lang-ko">뉴스레터 이메일 발송에 필요한 SMTP 서버 및 수신자 정보를 관리합니다.</span>
-          <span class="lang-en" style="display:none;">Manage outbound SMTP credentials and newsletter subscriber addresses.</span>
-        </p>
-      </div>
-      <form class="settings-form" data-mail-settings-form>
-        <div class="form-row">
-          <label>SMTP Host</label>
-          <input type="text" name="smtp_host" placeholder="smtp.gmail.com">
-        </div>
-        <div class="form-row">
-          <label>SMTP Port</label>
-          <input type="number" name="smtp_port" value="587">
-        </div>
-        <div class="form-row">
-          <label>SMTP User (Username / Email)</label>
-          <input type="text" name="smtp_user" placeholder="user@example.com">
-        </div>
-        <div class="form-row">
-          <label>SMTP Password <small data-password-state style="color:#64748b;margin-left:6px;"></small></label>
-          <input type="password" name="smtp_password" placeholder="App Password">
-        </div>
-        <div class="form-row">
-          <label>Sender Address (From)</label>
-          <input type="text" name="smtp_from" placeholder="AI Newsletter <newsletter@example.com>">
-        </div>
-        <div class="form-row">
-          <label>Recipients (Newsletter To)</label>
-          <input type="text" name="newsletter_to" placeholder="subscriber1@example.com, subscriber2@example.com">
-        </div>
-        <div class="form-row checkbox-row">
-          <label>
-            <input type="checkbox" name="smtp_tls" checked>
-            <span>STARTTLS 보안 연결 사용</span>
-          </label>
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="primary-action">
-            <span class="lang-ko">설정 저장</span>
-            <span class="lang-en" style="display:none;">Save Settings</span>
-          </button>
-        </div>
-      </form>
-    </section>
-
     <!-- Source Health Panel -->
     <section data-view-panel="sources" style="display:none;">
       <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;">
@@ -742,6 +697,82 @@
 
     <div class="status-toast" data-status></div>
   </main>
+</div>
+
+<!-- Mail Settings Modal Dialog (팝업 모달) -->
+<div class="modal-backdrop" id="mailSettingsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="mailModalTitle">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title-group">
+        <i data-lucide="settings" class="modal-icon"></i>
+        <div>
+          <h3 class="modal-title" id="mailModalTitle">
+            <span class="lang-ko">이메일 SMTP 발송 설정</span>
+            <span class="lang-en" style="display:none;">Mail SMTP Configuration</span>
+          </h3>
+          <p class="modal-subtitle">
+            <span class="lang-ko">뉴스레터 이메일 발송에 필요한 SMTP 서버 및 수신자 정보를 관리합니다.</span>
+            <span class="lang-en" style="display:none;">Manage outbound SMTP credentials and newsletter subscriber addresses.</span>
+          </p>
+        </div>
+      </div>
+      <button type="button" class="modal-close-btn" data-close-mail-settings title="닫기 (Close)">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <form class="settings-form" data-mail-settings-form>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>SMTP Host</label>
+            <input type="text" name="smtp_host" placeholder="smtp.gmail.com">
+          </div>
+          <div class="form-row">
+            <label>SMTP Port</label>
+            <input type="number" name="smtp_port" value="587">
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>SMTP User (Username / Email)</label>
+            <input type="text" name="smtp_user" placeholder="user@example.com">
+          </div>
+          <div class="form-row">
+            <label>SMTP Password <small data-password-state style="color:var(--muted);margin-left:6px;"></small></label>
+            <input type="password" name="smtp_password" placeholder="App Password">
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Sender Address (From)</label>
+          <input type="text" name="smtp_from" placeholder="AI Newsletter <newsletter@example.com>">
+        </div>
+        <div class="form-row">
+          <label>Recipients (Newsletter To)</label>
+          <input type="text" name="newsletter_to" placeholder="subscriber1@example.com, subscriber2@example.com">
+        </div>
+        <div class="form-row checkbox-row">
+          <label class="custom-checkbox-label">
+            <input type="checkbox" name="smtp_tls" checked>
+            <span>
+              <span class="lang-ko">STARTTLS 보안 연결 사용</span>
+              <span class="lang-en" style="display:none;">Use STARTTLS Secure Connection</span>
+            </span>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="modal-cancel-btn" data-close-mail-settings>
+            <span class="lang-ko">닫기</span>
+            <span class="lang-en" style="display:none;">Close</span>
+          </button>
+          <button type="submit" class="primary-action">
+            <span class="lang-ko">설정 저장</span>
+            <span class="lang-en" style="display:none;">Save Settings</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 {% endblock %}
 

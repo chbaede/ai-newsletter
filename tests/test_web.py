@@ -44,6 +44,18 @@ def test_issue_page(client):
     assert "2026-09-17" in res.text
 
 
+def test_mail_settings_modal_rendered(client):
+    res = client.get("/")
+    assert res.status_code == 200
+    # Must have the mail settings trigger buttons
+    assert "data-open-mail-settings" in res.text
+    # Must have the modal backdrop container
+    assert 'id="mailSettingsModal"' in res.text
+    assert "data-mail-settings-form" in res.text
+    # Must NOT have static bottom settings panel
+    assert 'data-view-panel="settings"' not in res.text
+
+
 def test_health_check(client):
     res = client.get("/api/health")
     assert res.status_code == 200

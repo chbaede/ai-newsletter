@@ -15,6 +15,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const filterEmpty = document.querySelector("[data-filter-empty]");
   const viewTabs = Array.from(document.querySelectorAll("[data-view-tab]"));
   const viewPanels = Array.from(document.querySelectorAll("[data-view-panel]"));
+  const mailSettingsModal = document.getElementById("mailSettingsModal");
+  const openMailSettingsButtons = Array.from(document.querySelectorAll("[data-open-mail-settings]"));
+  const closeMailSettingsButtons = Array.from(document.querySelectorAll("[data-close-mail-settings]"));
   const sourceHealthAction = document.querySelector("[data-source-health-action]");
   const sourceHealthSummary = document.querySelector("[data-source-health-summary]");
   const sourceHealthList = document.querySelector("[data-source-health-list]");
@@ -504,18 +507,76 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      if (target === "settings") {
-        loadMailSettings();
-      }
       if (target === "sources") {
         loadSourceHealth();
       }
     });
   });
 
+  const openMailSettings = async () => {
+    let key = getAdminKey();
+    if (!key) {
+      const input = prompt("관리자 암호(비밀번호)를 입력하세요:");
+      if (!input || !input.trim()) return;
+      localStorage.setItem("admin_key", input.trim());
+      checkAdminMode();
+    }
+    await loadMailSettings();
+    if (mailSettingsModal) {
+      mailSettingsModal.style.display = "flex";
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    }
+  };
+
+  const closeMailSettings = () => {
+    if (mailSettingsModal) {
+      mailSettingsModal.style.display = "none";
+    }
+  };
+
+  openMailSettingsButtons.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      openMailSettings();
+    });
+  });
+
+  closeMailSettingsButtons.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeMailSettings();
+    });
+  });
+
+  if (mailSettingsModal) {
+    mailSettingsModal.addEventListener("click", (e) => {
+      if (e.target === mailSettingsModal) {
+        closeMailSettings();
+      }
+    });
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && mailSettingsModal && mailSettingsModal.style.display !== "none") {
+      closeMailSettings();
+    }
+  });
+
   const loadMailSettings = async () => {
     try {
       const res = await fetch("/api/mail-settings", { headers: adminHeaders() });
+      if (res.status === 401) {
+        const input = prompt("관리자 암호가 일치하지 않습니다. 다시 입력하세요:");
+        if (input && input.trim()) {
+          localStorage.setItem("admin_key", input.trim());
+          checkAdminMode();
+          return loadMailSettings();
+        } else {
+          return;
+        }
+      }
       if (!res.ok) return;
       const data = await res.json();
       if (!data.ok || !data.settings) return;
@@ -555,7 +616,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.message || "설정 저장 실패");
         showStatus(data.message || "설정이 저장되었습니다.", "success");
-        loadMailSettings();
+        await loadMailSettings();
+        setTimeout(() => {
+          closeMailSettings();
+        }, 500);
       } catch (err) {
         showStatus(err.message, "error");
       }
