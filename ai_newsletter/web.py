@@ -41,6 +41,7 @@ from .presentation import (
     display_url,
     display_why_it_matters_en,
     display_why_it_matters_ko,
+    prepare_article_view,
     region_counts,
     regions_for_article,
     source_type_counts,
@@ -196,9 +197,12 @@ def _render_index(
     lang = request.query_params.get("lang") or settings.default_language or "ko"
     sections = []
     displayed_articles = []
+    all_table_views = []
     if issue:
-        sections = build_intelligence_sections(issue, lang=lang)
+        sections = build_intelligence_sections(issue, lang=lang, min_score=60.0, max_per_section=6)
         displayed_articles = [article for sec in sections for article in sec["articles"]]
+        sorted_all = sorted(issue.articles, key=lambda a: a.priority_score or a.score or 0.0, reverse=True)
+        all_table_views = [prepare_article_view(a) for a in sorted_all]
 
     return templates.TemplateResponse(
         request,
@@ -206,6 +210,7 @@ def _render_index(
         {
             "issue": issue,
             "sections": sections,
+            "all_table_views": all_table_views,
             "history": store.list_issues(),
             "today": date.today().isoformat(),
             "lang": lang,

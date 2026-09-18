@@ -270,10 +270,6 @@
                         <span class="lang-en" style="display:none;">{{ view.priority.label_en }}</span>
                         <span class="score-num">{{ view.priority.score }}</span>
                       </span>
-                      <span class="evidence-badge {{ view.transparency.evidence_badge.css_class }}">
-                        <span class="lang-ko">{{ view.transparency.evidence_badge.label_ko }}</span>
-                        <span class="lang-en" style="display:none;">{{ view.transparency.evidence_badge.label_en }}</span>
-                      </span>
                       <span class="pub-time">{{ view.published_time }}</span>
                     </div>
                     <a href="{{ view.source_url }}" class="original-link-btn" target="_blank" rel="noopener noreferrer" title="원문 기사 바로가기 (Open Original Article)">
@@ -289,36 +285,6 @@
                       <span class="lang-en" style="display:none;">{{ view.title_en }}</span>
                     </a>
                   </h4>
-
-                  <div class="source-transparency-row">
-                    <div class="transparency-item">
-                      <span class="transparency-label">
-                        <span class="lang-ko">{% if view.transparency.is_multi_source %}출처목록{% else %}출처{% endif %}:</span>
-                        <span class="lang-en" style="display:none;">{% if view.transparency.is_multi_source %}Sources{% else %}Source{% endif %}:</span>
-                      </span>
-                      <span class="transparency-val source-val">{{ view.transparency.sources_display }}</span>
-                    </div>
-                    <div class="transparency-item">
-                      <span class="transparency-label">
-                        <span class="lang-ko">증거:</span>
-                        <span class="lang-en" style="display:none;">Evidence:</span>
-                      </span>
-                      <span class="transparency-val">
-                        <span class="lang-ko">{{ view.transparency.evidence_label_ko }}</span>
-                        <span class="lang-en" style="display:none;">{{ view.transparency.evidence_label_en }}</span>
-                      </span>
-                    </div>
-                    <div class="transparency-item">
-                      <span class="transparency-label">
-                        <span class="lang-ko">신뢰도:</span>
-                        <span class="lang-en" style="display:none;">Confidence:</span>
-                      </span>
-                      <span class="confidence-tag conf-{{ view.transparency.confidence_label|lower }}" title="{% if view.transparency.confidence_explanation_ko %}{{ view.transparency.confidence_explanation_ko }}{% else %}{{ view.transparency.confidence_explanation_en }}{% endif %}">
-                        <span class="lang-ko">{{ view.transparency.confidence_label_ko }}</span>
-                        <span class="lang-en" style="display:none;">{{ view.transparency.confidence_label }}</span>
-                      </span>
-                    </div>
-                  </div>
 
                   <div class="article-summary">
                     <p class="lang-ko">{{ view.factual_summary_ko }}</p>
@@ -344,47 +310,75 @@
                     </ul>
                   {% endif %}
 
-                  {% if view.transparency.is_multi_source and (view.transparency.primary_sources or view.transparency.independent_sources) %}
-                    <details class="evidence-expansion">
-                      <summary>
-                        <span class="lang-ko">세부 출처 정보 보기</span>
-                        <span class="lang-en" style="display:none;">View source breakdown</span>
-                        <i data-lucide="chevron-down" style="width:12px;height:12px;"></i>
-                      </summary>
-                      <div class="evidence-expansion-content">
-                        {% if view.transparency.primary_sources %}
-                          <div class="exp-row">
-                            <strong><span class="lang-ko">1차 공식 출처</span><span class="lang-en" style="display:none;">Primary Source</span>:</strong>
-                            <span>{{ view.transparency.primary_sources|join(', ') }}</span>
-                          </div>
-                        {% endif %}
-                        {% if view.transparency.independent_sources %}
-                          <div class="exp-row">
-                            <strong><span class="lang-ko">독립 취재 언론</span><span class="lang-en" style="display:none;">Independent Media</span>:</strong>
-                            <span>{{ view.transparency.independent_sources|join(', ') }}</span>
-                          </div>
-                        {% endif %}
-                        {% if view.transparency.other_sources %}
-                          <div class="exp-row">
-                            <strong><span class="lang-ko">기타 보도</span><span class="lang-en" style="display:none;">Other Media</span>:</strong>
-                            <span>{{ view.transparency.other_sources|join(', ') }}</span>
-                          </div>
-                        {% endif %}
+                  <!-- Consolidated Bottom Card Footer: Source, Evidence, Confidence & Details -->
+                  <div class="card-footer-transparency">
+                    <div class="source-transparency-row">
+                      <div class="transparency-item">
+                        <span class="transparency-label">
+                          <span class="lang-ko">출처:</span>
+                          <span class="lang-en" style="display:none;">Source:</span>
+                        </span>
+                        <span class="transparency-val source-val">{{ view.transparency.sources_display }}</span>
                       </div>
-                    </details>
-                  {% endif %}
-
-                  <div class="card-footer">
-                    <div class="tags-row">
-                      {% for tag in view.user_tags[:4] %}
-                        <span class="tag-pill">{{ tag }}</span>
-                      {% endfor %}
+                      <div class="transparency-item">
+                        <span class="transparency-label">
+                          <span class="lang-ko">증거:</span>
+                          <span class="lang-en" style="display:none;">Evidence:</span>
+                        </span>
+                        <span class="transparency-val">
+                          <span class="lang-ko">{{ view.transparency.evidence_label_ko }}</span>
+                          <span class="lang-en" style="display:none;">{{ view.transparency.evidence_label_en }}</span>
+                        </span>
+                      </div>
+                      <div class="transparency-item">
+                        <span class="transparency-label">
+                          <span class="lang-ko">신뢰도:</span>
+                          <span class="lang-en" style="display:none;">Confidence:</span>
+                        </span>
+                        <span class="confidence-tag conf-{{ view.transparency.confidence_label|lower }}" title="{% if view.transparency.confidence_explanation_ko %}{{ view.transparency.confidence_explanation_ko }}{% else %}{{ view.transparency.confidence_explanation_en }}{% endif %}">
+                          <span class="lang-ko">{{ view.transparency.confidence_label_ko }}</span>
+                          <span class="lang-en" style="display:none;">{{ view.transparency.confidence_label }}</span>
+                        </span>
+                      </div>
                     </div>
-                    <a href="{{ view.source_url }}" class="read-link" target="_blank" rel="noopener noreferrer">
-                      <span class="lang-ko">원문 읽기</span>
-                      <span class="lang-en" style="display:none;">Full Source</span>
-                      <i data-lucide="external-link" style="width:12px;height:12px;"></i>
-                    </a>
+
+                    {% if view.transparency.is_multi_source and (view.transparency.primary_sources or view.transparency.independent_sources or view.transparency.other_sources) %}
+                      <details class="evidence-expansion">
+                        <summary>
+                          <span class="lang-ko">세부 출처 보기</span>
+                          <span class="lang-en" style="display:none;">View source breakdown</span>
+                          <i data-lucide="chevron-down" style="width:12px;height:12px;"></i>
+                        </summary>
+                        <div class="evidence-expansion-content">
+                          {% if view.transparency.primary_sources %}
+                            <div class="exp-row">
+                              <strong><span class="lang-ko">공식 출처</span><span class="lang-en" style="display:none;">Primary Source</span>:</strong>
+                              <span>{{ view.transparency.primary_sources|join(', ') }}</span>
+                            </div>
+                          {% endif %}
+                          {% if view.transparency.independent_sources %}
+                            <div class="exp-row">
+                              <strong><span class="lang-ko">독립 취재</span><span class="lang-en" style="display:none;">Independent Media</span>:</strong>
+                              <span>{{ view.transparency.independent_sources|join(', ') }}</span>
+                            </div>
+                          {% endif %}
+                          {% if view.transparency.other_sources %}
+                            <div class="exp-row">
+                              <strong><span class="lang-ko">전문 매체</span><span class="lang-en" style="display:none;">Other Media</span>:</strong>
+                              <span>{{ view.transparency.other_sources|join(', ') }}</span>
+                            </div>
+                          {% endif %}
+                        </div>
+                      </details>
+                    {% endif %}
+
+                    {% if view.user_tags %}
+                      <div class="tags-row">
+                        {% for tag in view.user_tags[:4] %}
+                          <span class="tag-pill">{{ tag }}</span>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
                   </div>
                 </article>
               {% endfor %}
@@ -407,6 +401,100 @@
           {% endif %}
         {% endif %}
       {% endfor %}
+
+      <!-- Comprehensive Briefing Table (전체 뉴스 브리핑 테이블) -->
+      {% if all_table_views %}
+        <section class="issue-section table-briefing-section" id="all-briefings-table">
+          <div class="section-header">
+            <div class="table-header-flex">
+              <div>
+                <h3>
+                  <span class="lang-ko">전체 뉴스 브리핑 목록 (우선순위순)</span>
+                  <span class="lang-en" style="display:none;">All Intelligence Briefings (Ranked by Priority)</span>
+                </h3>
+                <p>
+                  <span class="lang-ko">전체 수집된 {{ all_table_views|length }}건의 뉴스 목록입니다. 제목을 클릭하면 원문 기사로 바로 이동합니다.</span>
+                  <span class="lang-en" style="display:none;">Complete indexed {{ all_table_views|length }} briefings ordered by priority score. Click any title to read the original article.</span>
+                </p>
+              </div>
+              <div class="table-search-box">
+                <input type="text" id="briefingTableSearch" placeholder="기사 제목 또는 출처 검색..." aria-label="기사 검색">
+              </div>
+            </div>
+          </div>
+
+          <div class="table-responsive-wrapper">
+            <table class="briefing-table" id="briefingTable">
+              <thead>
+                <tr>
+                  <th style="width: 100px;">
+                    <span class="lang-ko">우선순위</span>
+                    <span class="lang-en" style="display:none;">Priority</span>
+                  </th>
+                  <th style="width: 130px;">
+                    <span class="lang-ko">분야</span>
+                    <span class="lang-en" style="display:none;">Category</span>
+                  </th>
+                  <th>
+                    <span class="lang-ko">기사 제목 (원문 링크)</span>
+                    <span class="lang-en" style="display:none;">Article Title (Direct Link)</span>
+                  </th>
+                  <th style="width: 130px;">
+                    <span class="lang-ko">출처</span>
+                    <span class="lang-en" style="display:none;">Source</span>
+                  </th>
+                  <th style="width: 80px;">
+                    <span class="lang-ko">신뢰도</span>
+                    <span class="lang-en" style="display:none;">Confidence</span>
+                  </th>
+                  <th style="width: 110px;">
+                    <span class="lang-ko">일시</span>
+                    <span class="lang-en" style="display:none;">Date</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in all_table_views %}
+                  <tr>
+                    <td>
+                      <span class="priority-badge {{ row.priority.level }} badge-sm">
+                        <span class="lang-ko">{{ row.priority.label_ko }}</span>
+                        <span class="lang-en" style="display:none;">{{ row.priority.label_en }}</span>
+                        <span class="score-num">{{ row.priority.score }}</span>
+                      </span>
+                    </td>
+                    <td>
+                      <span class="table-category-tag">
+                        <span class="lang-ko">{{ row.primary_category_ko }}</span>
+                        <span class="lang-en" style="display:none;">{{ row.primary_category_en }}</span>
+                      </span>
+                    </td>
+                    <td class="table-title-cell">
+                      <a href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer" class="table-article-link">
+                        <span class="lang-ko">{{ row.title_ko }}</span>
+                        <span class="lang-en" style="display:none;">{{ row.title_en }}</span>
+                        <i data-lucide="external-link" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-left:4px;opacity:0.6;"></i>
+                      </a>
+                    </td>
+                    <td class="table-source-cell">
+                      {{ row.publisher_display }}
+                    </td>
+                    <td>
+                      <span class="confidence-tag conf-{{ row.transparency.confidence_label|lower }}" title="{% if row.transparency.confidence_explanation_ko %}{{ row.transparency.confidence_explanation_ko }}{% else %}{{ row.transparency.confidence_explanation_en }}{% endif %}">
+                        <span class="lang-ko">{{ row.transparency.confidence_label_ko }}</span>
+                        <span class="lang-en" style="display:none;">{{ row.transparency.confidence_label }}</span>
+                      </span>
+                    </td>
+                    <td class="table-date-cell">
+                      {{ row.published_time }}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
 
     {% else %}
       <div class="empty-state">

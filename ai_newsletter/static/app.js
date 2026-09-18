@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const regionButtons = Array.from(document.querySelectorAll("[data-region-filter]"));
   const topicButtons = Array.from(document.querySelectorAll("[data-topic-filter]"));
   const sourceTypeButtons = Array.from(document.querySelectorAll("[data-source-type-filter]"));
-  const issueSections = Array.from(document.querySelectorAll(".issue-section"));
+  const issueSections = Array.from(document.querySelectorAll(".issue-section:not(.table-briefing-section)"));
   const filterEmpty = document.querySelector("[data-filter-empty]");
   const viewTabs = Array.from(document.querySelectorAll("[data-view-tab]"));
   const viewPanels = Array.from(document.querySelectorAll("[data-view-panel]"));
@@ -407,5 +407,20 @@ document.addEventListener("DOMContentLoaded", () => {
   // Periodically check if AdSense loaded
   setTimeout(checkAdContainers, 1500);
   setTimeout(checkAdContainers, 3500);
+
+  // Live table search for All Briefings Table
+  const tableSearchInput = document.getElementById("briefingTableSearch");
+  const briefingTable = document.getElementById("briefingTable");
+  if (tableSearchInput && briefingTable) {
+    tableSearchInput.addEventListener("input", (e) => {
+      const query = e.target.value.toLowerCase().trim();
+      const rows = briefingTable.querySelectorAll("tbody tr");
+      rows.forEach((row) => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(query) ? "" : "none";
+      });
+    });
+  }
 });
+
 

@@ -409,20 +409,38 @@ def display_event_coverage(article: Article) -> dict[str, Any]:
 
 
 def display_source_transparency(article: Article) -> SourceTransparency:
-    ev_level = article.evidence_level or "industry_media"
+    raw_pub = (article.publisher or article.source or "").strip()
+    ev_level = article.evidence_level or source_evidence_level(raw_pub) or "industry_media"
     badge = EVIDENCE_BADGES.get(ev_level, EVIDENCE_BADGES["industry_media"])
 
     # Collect source list
     related = list(article.event_related_sources or [])
     if not related:
-        primary_pub = article.publisher or article.source or "Unknown Source"
+        primary_pub = raw_pub or "Unknown Source"
         related = [primary_pub]
 
     is_multi = len(related) > 1
     sources_display = " · ".join(related[:4]) + (f" (+{len(related)-4})" if len(related) > 4 else "")
 
-    # Evidence label
-    status = article.event_verification_status or "insufficient_evidence"
+    # Resolve / calibrate verification status
+    status = article.event_verification_status
+    if not status or status == "insufficient_evidence":
+        if is_multi:
+            status = "multi_source"
+        elif ev_level == "primary" or article.is_primary_source or article.is_official or article.source_type == "official":
+            status = "primary_only"
+        elif ev_level == "independent" or article.is_independent_source:
+            status = "independently_reported"
+        elif ev_level == "research" or article.source_type == "research":
+            status = "primary_only"
+        elif ev_level == "industry_media" or article.source_type in {"media", "korean_media"}:
+            status = "independently_reported"
+        elif ev_level == "discovery" or article.is_discovery_source:
+            status = "discovery_only"
+        else:
+            status = "insufficient_evidence"
+
+    # Resolve bilingual evidence labels
     if status == "multi_source":
         ev_label_en = "Multi-source independent reporting"
         ev_label_ko = "다수 독립 언론 교차 취재"
@@ -433,12 +451,12 @@ def display_source_transparency(article: Article) -> SourceTransparency:
         if article.is_primary_source or article.source_type == "official":
             ev_label_en = "Primary announcement"
             ev_label_ko = "1차 공식 발표"
-        elif ev_level == "research":
+        elif ev_level == "research" or article.source_type == "research":
             ev_label_en = "Research publication"
             ev_label_ko = "연구기관 발표 기반"
         else:
-            ev_label_en = "Direct source announcement"
-            ev_label_ko = "직접 출처 발표"
+            ev_label_en = "Primary announcement"
+            ev_label_ko = "1차 공식 발표"
     elif status == "discovery_only":
         ev_label_en = "Aggregator discovery"
         ev_label_ko = "검색 집계 발견"
@@ -462,7 +480,41 @@ def display_source_transparency(article: Article) -> SourceTransparency:
             ev_label_en = "Aggregator / Discovery"
             ev_label_ko = "검색 집계 / 발견"
 
-    conf_label = article.event_confidence_label or "Medium"
+    # Calibrate confidence score & labels
+    conf_label = article.event_confidence_label
+    conf_exp_ko = article.event_confidence_explanation_ko or ""
+    conf_exp_en = article.event_confidence_explanation_en or ""
+
+    if not conf_label or (conf_label == "Low" and status in {"multi_source", "independently_reported", "primary_only"}):
+        auth = article.authority_score or article.source_authority or 70
+        is_official = article.is_official or article.is_primary_source or article.source_type == "official" or ev_level == "primary"
+        is_ind = article.is_independent_source or ev_level == "independent"
+
+        if status == "multi_source" or (is_official and is_ind):
+            conf_label = "High"
+            conf_exp_ko = f"{raw_pub} 등 다수 출처 교차 검증"
+            conf_exp_en = f"Multi-source verified reporting including {raw_pub}"
+        elif is_official:
+            conf_label = "High" if auth >= 90 else "Medium"
+            conf_exp_ko = f"{raw_pub} 공식 발표 (1차 출처)"
+            conf_exp_en = f"{raw_pub} official primary announcement"
+        elif is_ind:
+            conf_label = "High" if auth >= 90 else "Medium"
+            conf_exp_ko = f"{raw_pub} 독립 언론 심층 보도"
+            conf_exp_en = f"{raw_pub} independent journalistic coverage"
+        elif ev_level == "research" or article.source_type == "research":
+            conf_label = "High" if auth >= 90 else "Medium"
+            conf_exp_ko = f"{raw_pub} 연구기관 논문 및 발표"
+            conf_exp_en = f"{raw_pub} academic / research publication"
+        elif ev_level == "industry_media" or article.source_type in {"media", "korean_media"}:
+            conf_label = "Medium"
+            conf_exp_ko = f"{raw_pub} IT/산업 전문 매체 보도"
+            conf_exp_en = f"{raw_pub} industry media coverage"
+        else:
+            conf_label = "Low"
+            conf_exp_ko = "커뮤니티 논의 또는 미확인 출처"
+            conf_exp_en = "Community discussion or unverified source"
+
     if conf_label == "High":
         conf_label_ko = "높음"
     elif conf_label == "Medium":
@@ -481,8 +533,8 @@ def display_source_transparency(article: Article) -> SourceTransparency:
         evidence_label_ko=ev_label_ko,
         confidence_label=conf_label,
         confidence_label_ko=conf_label_ko,
-        confidence_explanation_en=article.event_confidence_explanation_en or "",
-        confidence_explanation_ko=article.event_confidence_explanation_ko or "",
+        confidence_explanation_en=conf_exp_en,
+        confidence_explanation_ko=conf_exp_ko,
         is_multi_source=is_multi,
         independent_source_count=article.event_independent_source_count or (1 if article.is_independent_source else 0),
         primary_sources=primary_sources,
@@ -518,20 +570,22 @@ def prepare_article_view(article: Article) -> ArticleView:
     )
 
 
-
 def build_intelligence_sections(
     issue: NewsletterIssue,
     lang: str = "ko",
-    min_score: float = 45.0,
-    max_per_section: int = 9,
+    min_score: float = 60.0,
+    max_per_section: int = 6,
 ) -> list[dict[str, Any]]:
+    """Build intelligence sections displaying only high-priority featured articles on the main visual cards."""
     is_en = lang == "en"
     raw_articles = issue.articles
 
-    # Filter out low-scoring/watch articles when scores are present
+    # Filter out low-scoring articles for featured cards (keep Critical & High priority, score >= 60.0)
     has_scores = any((a.priority_score or a.score or 0) > 0 for a in raw_articles)
     if has_scores:
         qualified = [a for a in raw_articles if (a.priority_score or a.score or 0) >= min_score]
+        if len(qualified) < 3:
+            qualified = [a for a in raw_articles if (a.priority_score or a.score or 0) >= 45.0]
         if len(qualified) < 3:
             qualified = [a for a in raw_articles if (a.priority_score or a.score or 0) >= 30.0]
         articles = qualified if qualified else raw_articles
