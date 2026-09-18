@@ -169,6 +169,54 @@ def _match_keyword_in_text(keyword: str, text: str) -> bool:
     return keyword in text
 
 
+THEME_TO_ACTION: dict[str, str] = {
+    "model_release": "release",
+    "pricing": "pricing",
+    "legal_policy": "legal",
+    "security_safety": "security",
+    "office_expansion": "office_expansion",
+    "executive_movement": "executive_movement",
+    "investment": "investment",
+    "partnership": "partnership",
+}
+
+
+def _effective_actions(
+    target: ArticleClusteringFeatures | Iterable[str] = (),
+    themes: Iterable[str] | None = None,
+) -> set[str]:
+    """Derive full effective action set combining explicit actions and theme mappings."""
+    if isinstance(target, ArticleClusteringFeatures):
+        eff = set(target.actions)
+        for th in target.themes:
+            act = THEME_TO_ACTION.get(th)
+            if act:
+                eff.add(act)
+        return eff
+    eff = set(target)
+    if themes:
+        for th in themes:
+            act = THEME_TO_ACTION.get(th)
+            if act:
+                eff.add(act)
+    return eff
+
+
+def _extract_entity_model_pairs(
+    anchors: Iterable[tuple[str, str | None, str | None]],
+) -> set[tuple[str, str]]:
+    """Extract concrete (entity, model) pairs where both entity and model are non-None."""
+    return {(ent, mod) for (_, ent, mod) in anchors if ent is not None and mod is not None}
+
+
+def _shared_entity_model_pairs(
+    anchors1: Iterable[tuple[str, str | None, str | None]],
+    anchors2: Iterable[tuple[str, str | None, str | None]],
+) -> set[tuple[str, str]]:
+    """Return shared concrete (entity, model) pairs across two anchor sets."""
+    return _extract_entity_model_pairs(anchors1) & _extract_entity_model_pairs(anchors2)
+
+
 # ── Feature & Anchor Data Structures ──────────────────────────────────────────
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +226,7 @@ class EventAnchor:
     models: frozenset[str]
     themes: frozenset[str]
     actions: frozenset[str]
+    anchors: frozenset[tuple[str, str | None, str | None]] = frozenset()
 
 
 @dataclass(slots=True)
@@ -201,16 +250,7 @@ def extract_event_anchors(
 ) -> set[tuple[str, str | None, str | None]]:
     """Extract structured (action, entity, model) anchors from extracted features."""
     anchors = set()
-    all_actions = actions | {
-        "office_expansion" if "office_expansion" in themes else None,
-        "executive_movement" if "executive_movement" in themes else None,
-        "legal" if "legal_policy" in themes else None,
-        "security" if "security_safety" in themes else None,
-        "investment" if "investment" in themes else None,
-        "pricing" if "pricing" in themes else None,
-        "release" if "model_release" in themes else None,
-    }
-    cleaned_actions = {a for a in all_actions if a is not None}
+    cleaned_actions = _effective_actions(actions, themes)
 
     if not cleaned_actions:
         cleaned_actions = {"general"}
@@ -280,6 +320,58 @@ def extract_clustering_features(article: Article) -> ArticleClusteringFeatures:
     )
 
 
+def _is_same_launch_context(
+    f1: ArticleClusteringFeatures,
+    f2: ArticleClusteringFeatures,
+    a1: Article | None = None,
+    a2: Article | None = None,
+) -> bool:
+    """Check whether a pricing story and a release story share the exact same launch context.
+
+    A valid same-launch context strongly requires:
+    - Shared entity (e.g. OpenAI)
+    - Shared model (e.g. GPT-5)
+    - One side has release action/theme, other side has pricing action/theme
+    - No conflicting disjoint model mentions
+    """
+    eff_act1 = _effective_actions(f1)
+    eff_act2 = _effective_actions(f2)
+
+    has_pricing_1 = "pricing" in eff_act1
+    has_pricing_2 = "pricing" in eff_act2
+
+    # Exactly one side must be pricing
+    if not (has_pricing_1 ^ has_pricing_2):
+        return False
+
+    has_release_1 = "release" in eff_act1
+    has_release_2 = "release" in eff_act2
+
+    # The non-pricing side must have release context
+    if has_pricing_1 and not has_release_2:
+        return False
+    if has_pricing_2 and not has_release_1:
+        return False
+
+    # Shared entity required
+    shared_entities = f1.entities & f2.entities
+    if not shared_entities:
+        return False
+
+    # Shared model required
+    shared_models = f1.models & f2.models
+    if not shared_models:
+        return False
+
+    # Check that neither article introduces an unrelated conflicting model
+    pricing_feat = f1 if has_pricing_1 else f2
+    release_feat = f2 if has_pricing_1 else f1
+    if pricing_feat.models - release_feat.models:
+        return False
+
+    return True
+
+
 # ── Pairwise Similarity Calculation ───────────────────────────────────────────
 
 def calculate_event_similarity(
@@ -316,12 +408,15 @@ def calculate_event_similarity(
     union = len(f1.tokens | f2.tokens)
     jaccard = intersect / union if union > 0 else 0.0
 
+    eff_act1 = _effective_actions(f1)
+    eff_act2 = _effective_actions(f2)
+
     # Layered Hard-Negative Guards
     # 1. Competitor entity collision (pure competitor stories without alliance or shared framework)
     if f1.entities and f2.entities and f1.entities.isdisjoint(f2.entities):
         shared_joint_context = (
             bool((f1.themes & f2.themes) & {"partnership", "legal_policy", "security_safety"})
-            or bool((f1.actions & f2.actions) & {"partnership", "legal", "security"})
+            or bool((eff_act1 & eff_act2) & {"partnership", "legal", "security"})
         )
         if not (shared_joint_context and jaccard >= MIN_JACCARD_SHARED_JOINT_CONTEXT):
             return 0.0
@@ -332,26 +427,27 @@ def calculate_event_similarity(
         has_multi_entity_joint_anchor = len(f1.entities & f2.entities) >= 2
         has_joint_event_anchor = bool(
             (f1.themes & f2.themes) & {"partnership", "security_safety", "legal_policy", "benchmarking"}
-            or (f1.actions & f2.actions) & {"partnership", "security", "legal"}
+            or (eff_act1 & eff_act2) & {"partnership", "security", "legal"}
         )
         if not (has_multi_entity_joint_anchor or has_joint_event_anchor):
             return 0.0
 
     # 3. Action & Theme hard clash guards
-    # Strict separation between pricing updates and non-pricing stories
-    if ("pricing" in f1.actions) ^ ("pricing" in f2.actions):
-        return 0.0
+    # Contextual separation between pricing updates and non-pricing stories
+    if ("pricing" in eff_act1) ^ ("pricing" in eff_act2):
+        if not _is_same_launch_context(f1, f2, a1=a1, a2=a2):
+            return 0.0
 
     # Strict separation between pure office expansion and non-office stories (unless shared release/partnership theme)
-    if (("office_expansion" in f1.themes) or ("office_expansion" in f1.actions)) ^ (
-        ("office_expansion" in f2.themes) or ("office_expansion" in f2.actions)
+    if (("office_expansion" in f1.themes) or ("office_expansion" in eff_act1)) ^ (
+        ("office_expansion" in f2.themes) or ("office_expansion" in eff_act2)
     ):
         if not (f1.themes & f2.themes & {"partnership", "investment", "model_release"}):
             return 0.0
 
     # Strict separation between pure executive movement and non-executive stories (unless shared release/partnership theme)
-    if (("executive_movement" in f1.themes) or ("executive_movement" in f1.actions)) ^ (
-        ("executive_movement" in f2.themes) or ("executive_movement" in f2.actions)
+    if (("executive_movement" in f1.themes) or ("executive_movement" in eff_act1)) ^ (
+        ("executive_movement" in f2.themes) or ("executive_movement" in eff_act2)
     ):
         if not (f1.themes & f2.themes & {"partnership", "investment", "model_release"}):
             return 0.0
@@ -359,23 +455,23 @@ def calculate_event_similarity(
     # 4. Action & Theme clash penalties
     clash_penalty = 0.0
     # Legal / investigation vs pure release / product (unless shared legal/policy theme)
-    if (("legal" in f1.actions) ^ ("legal" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
+    if (("legal" in eff_act1) ^ ("legal" in eff_act2)) and (("release" in eff_act1) ^ ("release" in eff_act2)):
         if not ((f1.themes & f2.themes) & {"legal_policy", "partnership"}):
             clash_penalty += CLASH_PENALTY_LEGAL
     # Office expansion vs pure release / legal / security (when not sharing joint theme)
-    if (("office_expansion" in f1.actions) ^ ("office_expansion" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
+    if (("office_expansion" in eff_act1) ^ ("office_expansion" in eff_act2)) and (("release" in eff_act1) ^ ("release" in eff_act2)):
         if not (f1.themes & f2.themes & {"model_release", "partnership"}):
             clash_penalty += CLASH_PENALTY_OFFICE
     # Executive movement vs pure release / legal / security
-    if (("executive_movement" in f1.actions) ^ ("executive_movement" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
+    if (("executive_movement" in eff_act1) ^ ("executive_movement" in eff_act2)) and (("release" in eff_act1) ^ ("release" in eff_act2)):
         if not (f1.themes & f2.themes & {"model_release", "partnership"}):
             clash_penalty += CLASH_PENALTY_EXECUTIVE
     # Security vulnerability vs pure release
-    if (("security" in f1.actions) ^ ("security" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
+    if (("security" in eff_act1) ^ ("security" in eff_act2)) and (("release" in eff_act1) ^ ("release" in eff_act2)):
         if not ((f1.themes & f2.themes) & {"security_safety", "partnership"}):
             clash_penalty += CLASH_PENALTY_SECURITY
     # Partnership vs pure release (without shared partnership or multi-entity context)
-    if (("partnership" in f1.actions) ^ ("partnership" in f2.actions)) and (("release" in f1.actions) ^ ("release" in f2.actions)):
+    if (("partnership" in eff_act1) ^ ("partnership" in eff_act2)) and (("release" in eff_act1) ^ ("release" in eff_act2)):
         if not ((f1.themes & f2.themes) & {"partnership", "security_safety"} or len(f1.entities & f2.entities) >= 2):
             clash_penalty += CLASH_PENALTY_PARTNERSHIP
 
@@ -388,10 +484,11 @@ def calculate_event_similarity(
         score += BONUS_MULTI_ENTITIES
     elif len(shared_entities) == 1:
         has_shared_action_or_theme = bool(
-            (f1.actions & f2.actions)
+            (eff_act1 & eff_act2)
             or (f1.themes & f2.themes)
             or (f1.models & f2.models)
             or ((f1.themes | f2.themes) <= {"model_release", "benchmarking"} and (f1.themes or f2.themes))
+            or _is_same_launch_context(f1, f2, a1=a1, a2=a2)
             or jaccard >= MIN_JACCARD_SINGLE_ENTITY_CONTEXT
         )
         if has_shared_action_or_theme:
@@ -404,6 +501,10 @@ def calculate_event_similarity(
     if f1.models and f2.models and not f1.models.isdisjoint(f2.models):
         score += BONUS_SHARED_MODELS
 
+    # Structured anchor bonus: same concrete (entity, model) pair
+    if _shared_entity_model_pairs(f1.anchors, f2.anchors):
+        score += 0.05
+
     # Themes bonus
     if f1.themes and f2.themes and not f1.themes.isdisjoint(f2.themes):
         score += BONUS_SHARED_THEMES
@@ -412,7 +513,7 @@ def calculate_event_similarity(
         score += BONUS_BENCHMARK_RELEASE_THEMES
 
     # Actions bonus
-    if f1.actions and f2.actions and not f1.actions.isdisjoint(f2.actions):
+    if eff_act1 and eff_act2 and not eff_act1.isdisjoint(eff_act2):
         score += BONUS_SHARED_ACTIONS
 
     score -= clash_penalty
@@ -769,16 +870,19 @@ def select_cluster_representative(
     features: list[ArticleClusteringFeatures],
     window_hours: float = DEFAULT_EVENT_WINDOW_HOURS,
 ) -> int:
-    """Select the most authoritative and central representative article index for a cluster.
+    """Select the semantic clustering representative article index for a cluster.
+
+    Distinct from select_primary_article():
+    - select_cluster_representative() = semantic clustering representative used for cohesion checks
+    - select_primary_article() = authoritative article shown as the event primary source
 
     Deterministic ranking:
     1. Primary/Official status (1 if official/primary else 0)
     2. Evidence level strength (primary: 3, independent/research: 2, industry_media: 1, other: 0)
     3. Authority score (authority_score or source_authority or 0.0)
     4. Priority score (priority_score or score or 0.0)
-    5. Anchor richness (number of models + entities + actions)
-    6. Average pairwise similarity to other cluster members (centrality)
-    7. Tie-breaker: oldest published_at, then article_id / url
+    5. Anchor richness (number of models * 2 + entities + actions)
+    6. Tie-breaker: oldest published_at, then article_id / url
     """
     if not cluster:
         raise ValueError("Cannot select representative from empty cluster")
@@ -844,37 +948,119 @@ def compute_cluster_anchor(
     models: set[str] = set()
     themes: set[str] = set()
     actions: set[str] = set()
+    anchors: set[tuple[str, str | None, str | None]] = set()
 
     for idx in cluster:
         f = features[idx]
         entities.update(f.entities)
         models.update(f.models)
         themes.update(f.themes)
-        actions.update(f.actions)
-        # Map theme-derived actions
-        if "model_release" in f.themes:
-            actions.add("release")
-        if "pricing" in f.themes:
-            actions.add("pricing")
-        if "legal_policy" in f.themes:
-            actions.add("legal")
-        if "security_safety" in f.themes:
-            actions.add("security")
-        if "office_expansion" in f.themes:
-            actions.add("office_expansion")
-        if "executive_movement" in f.themes:
-            actions.add("executive_movement")
-        if "investment" in f.themes:
-            actions.add("investment")
-        if "partnership" in f.themes:
-            actions.add("partnership")
+        actions.update(_effective_actions(f))
+        anchors.update(f.anchors)
 
     return EventAnchor(
         entities=frozenset(entities),
         models=frozenset(models),
         themes=frozenset(themes),
         actions=frozenset(actions),
+        anchors=frozenset(anchors),
     )
+
+
+def _has_action_conflict(
+    candidate_actions: set[str],
+    cluster_actions: set[str],
+) -> list[tuple[str, str]]:
+    """Find all conflicting action pairs between candidate and cluster.
+
+    Returns a list of (candidate_action, cluster_action) tuples that conflict.
+    """
+    conflicts: list[tuple[str, str]] = []
+    for conflict_set in ACTION_CONFLICTS:
+        acts = list(conflict_set)
+        act1, act2 = acts[0], acts[1]
+        if act1 in candidate_actions and act2 in cluster_actions:
+            conflicts.append((act1, act2))
+        if act2 in candidate_actions and act1 in cluster_actions:
+            if (act2, act1) not in conflicts:
+                conflicts.append((act2, act1))
+    return conflicts
+
+
+def _is_conflict_contextually_compatible(
+    act_cand: str,
+    act_clust: str,
+    candidate_feat: ArticleClusteringFeatures,
+    cluster_anchor: EventAnchor,
+) -> bool:
+    """Determine whether a specific conflicting action pair is contextually compatible.
+
+    A conflict is allowed ONLY when there is strong evidence that the two actions
+    belong to the same broader event. A shared action on another dimension does NOT
+    automatically grant an exemption.
+    """
+    conflict_pair = frozenset({act_cand, act_clust})
+    cand_eff = _effective_actions(candidate_feat)
+    shared_models = candidate_feat.models & cluster_anchor.models
+    shared_entities = candidate_feat.entities & cluster_anchor.entities
+
+    # 1. office_expansion or executive_movement vs release or pricing
+    if conflict_pair in {
+        frozenset({"release", "office_expansion"}),
+        frozenset({"release", "executive_movement"}),
+        frozenset({"pricing", "office_expansion"}),
+        frozenset({"pricing", "executive_movement"}),
+        frozenset({"office_expansion", "executive_movement"}),
+    }:
+        if act_cand in {"office_expansion", "executive_movement"}:
+            if "release" in cand_eff and shared_models:
+                return True
+            return False
+
+        if act_clust in {"office_expansion", "executive_movement"}:
+            if "release" in cluster_anchor.actions and shared_models:
+                return True
+            return False
+
+        return False
+
+    # 2. investment vs legal
+    if conflict_pair == frozenset({"investment", "legal"}):
+        return False
+
+    # 3. legal vs release
+    if conflict_pair == frozenset({"release", "legal"}):
+        if act_cand == "legal":
+            if "release" in cand_eff and shared_models:
+                return True
+        if act_clust == "legal":
+            if "release" in cluster_anchor.actions and shared_models:
+                return True
+        if bool(candidate_feat.themes & cluster_anchor.themes & {"legal_policy"}) and len(shared_entities) >= 2:
+            return True
+        return False
+
+    # 4. legal vs partnership
+    if conflict_pair == frozenset({"partnership", "legal"}):
+        has_shared_legal_theme = bool(candidate_feat.themes & cluster_anchor.themes & {"legal_policy", "partnership"})
+        if has_shared_legal_theme and len(shared_entities) >= 2:
+            return True
+        return False
+
+    # 5. security vs release
+    if conflict_pair == frozenset({"release", "security"}):
+        if act_cand == "security":
+            if "release" in cand_eff and shared_models:
+                return True
+        if act_clust == "security":
+            if "release" in cluster_anchor.actions and shared_models:
+                return True
+        has_shared_sec_theme = bool(candidate_feat.themes & cluster_anchor.themes & {"security_safety", "partnership"})
+        if has_shared_sec_theme and (shared_models or len(shared_entities) >= 2):
+            return True
+        return False
+
+    return False
 
 
 def is_candidate_compatible_with_cluster(
@@ -926,39 +1112,15 @@ def is_candidate_compatible_with_cluster(
     cluster_anchor = compute_cluster_anchor(cluster, features)
 
     # Candidate effective actions
-    candidate_actions = set(candidate_feat.actions)
-    if "model_release" in candidate_feat.themes:
-        candidate_actions.add("release")
-    if "pricing" in candidate_feat.themes:
-        candidate_actions.add("pricing")
-    if "legal_policy" in candidate_feat.themes:
-        candidate_actions.add("legal")
-    if "security_safety" in candidate_feat.themes:
-        candidate_actions.add("security")
-    if "office_expansion" in candidate_feat.themes:
-        candidate_actions.add("office_expansion")
-    if "executive_movement" in candidate_feat.themes:
-        candidate_actions.add("executive_movement")
-    if "investment" in candidate_feat.themes:
-        candidate_actions.add("investment")
-    if "partnership" in candidate_feat.themes:
-        candidate_actions.add("partnership")
+    candidate_actions = _effective_actions(candidate_feat)
 
-    # Cluster-level action conflict checking against ACTION_CONFLICTS
-    has_shared_action = bool(candidate_actions & cluster_anchor.actions)
-    has_shared_model = bool(candidate_feat.models & cluster_anchor.models)
-    has_joint_context = (
-        bool(cluster_anchor.themes & candidate_feat.themes & {"partnership", "security_safety", "legal_policy", "model_release"})
-        or (len(cluster_anchor.entities & candidate_feat.entities) >= 2)
-        or has_shared_model
-    )
-
-    for (act1, act2), penalty in ACTION_CONFLICTS.items():
-        if (act1 in candidate_actions and act2 in cluster_anchor.actions) or (
-            act2 in candidate_actions and act1 in cluster_anchor.actions
+    # Cluster-level action conflict checking against ACTION_CONFLICTS evaluated pair-by-pair
+    conflicts = _has_action_conflict(candidate_actions, cluster_anchor.actions)
+    for act_cand, act_clust in conflicts:
+        if not _is_conflict_contextually_compatible(
+            act_cand, act_clust, candidate_feat, cluster_anchor
         ):
-            if not (has_shared_action or has_joint_context):
-                return False, 0.0
+            return False, 0.0
 
     # Verify pairwise cohesion across ALL members of the cluster
     sim_sum = 0.0
@@ -1140,8 +1302,14 @@ def _build_event_from_cluster(
 # ── Primary Article Selection ─────────────────────────────────────────────────
 
 def select_primary_article(articles: list[Article]) -> Article:
-    """Select the best primary article for an event:
-    1. Official source
+    """Select the primary, authoritative article shown as the event primary source.
+
+    Distinct from select_cluster_representative():
+    - select_primary_article() = authoritative article shown as the event primary source
+    - select_cluster_representative() = semantic clustering representative used for cohesion checks
+
+    Deterministic ranking criteria:
+    1. Official / primary source status
     2. Highest priority / source score
     3. Oldest / first-break timestamp
     """

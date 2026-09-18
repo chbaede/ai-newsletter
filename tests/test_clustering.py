@@ -190,7 +190,7 @@ def test_clustering_multilingual_korean_english_coverage():
 
 
 def test_req1_same_company_different_events_three_distinct():
-    """1. Same company, different events: GPT-5 launch vs GPT-5 pricing vs London office."""
+    """1. Same company, different events: GPT-5 launch vs legacy API pricing vs London office."""
     a1 = Article(
         title="OpenAI announces GPT-5",
         url="https://openai.com/gpt-5",
@@ -199,8 +199,8 @@ def test_req1_same_company_different_events_three_distinct():
         tags=["OpenAI"],
     )
     a2 = Article(
-        title="OpenAI announces GPT-5 pricing and subscription tiers",
-        url="https://theverge.com/gpt-5-pricing",
+        title="OpenAI announces API pricing and subscription tiers for legacy models",
+        url="https://theverge.com/gpt-pricing",
         source="The Verge",
         category="frontier_models",
         tags=["OpenAI"],
@@ -218,7 +218,7 @@ def test_req1_same_company_different_events_three_distinct():
 
 
 def test_req2_same_model_different_actions_three_distinct():
-    """2. Same model, different actions: Release vs Pricing vs Security vulnerability."""
+    """2. Same company, different actions: Release vs Legacy Pricing vs Security vulnerability."""
     a1 = Article(
         title="OpenAI releases GPT-5 flagship model",
         url="https://openai.com/gpt-5-release",
@@ -227,11 +227,11 @@ def test_req2_same_model_different_actions_three_distinct():
         tags=["OpenAI", "GPT-5"],
     )
     a2 = Article(
-        title="OpenAI changes GPT-5 pricing for API developer accounts",
-        url="https://techcrunch.com/gpt5-price-change",
+        title="OpenAI changes GPT-3.5 pricing for legacy API developer accounts",
+        url="https://techcrunch.com/gpt35-price-change",
         source="TechCrunch",
         category="frontier_models",
-        tags=["OpenAI", "GPT-5"],
+        tags=["OpenAI", "GPT-3.5"],
     )
     a3 = Article(
         title="Researchers discover a GPT-5 safety vulnerability in jailbreak test",
@@ -543,7 +543,7 @@ def test_bridge_b_release_bridge_legal():
 
 
 def test_bridge_c_pricing_bridge_release():
-    """Bridge Test C: Launch story (A) vs Pricing announcement (B) must remain cleanly separated."""
+    """Bridge Test C: Launch story (A) vs Unrelated pricing announcement (B) must remain cleanly separated."""
     a = Article(
         article_id="art_a_launch",
         title="OpenAI launches GPT-5 flagship model for general availability",
@@ -554,11 +554,11 @@ def test_bridge_c_pricing_bridge_release():
     )
     b = Article(
         article_id="art_b_pricing",
-        title="OpenAI introduces new subscription pricing and API rates for GPT-5",
-        url="https://techcrunch.com/openai-gpt-5-pricing",
+        title="OpenAI introduces new subscription pricing and API rates for legacy GPT-3.5 models",
+        url="https://techcrunch.com/openai-gpt-pricing",
         source="TechCrunch",
         category="frontier_models",
-        tags=["OpenAI", "GPT-5"],
+        tags=["OpenAI", "GPT-3.5"],
     )
 
     events, event_articles, updated = cluster_articles([a, b])
@@ -769,7 +769,7 @@ def test_step87_test_c_release_broad_legal():
 
 
 def test_step87_test_d_pricing_broad_release():
-    """Test D: Pricing -> Broad -> Release (When in same model release launch context -> 1 event or 2 depending on anchor consistency)."""
+    """Test D: Pricing -> Broad -> Release (Unrelated pricing and release stories stay separate)."""
     # Distinct pricing vs release stories stay separate without joint release launch anchor
     a = Article(
         article_id="step87_d_launch",
@@ -781,11 +781,11 @@ def test_step87_test_d_pricing_broad_release():
     )
     b = Article(
         article_id="step87_d_pricing",
-        title="OpenAI introduces new subscription pricing and API rates for GPT-5",
-        url="https://techcrunch.com/openai-gpt-5-pricing",
+        title="OpenAI introduces new subscription pricing and API rates for legacy older systems",
+        url="https://techcrunch.com/openai-legacy-pricing",
         source="TechCrunch",
         category="frontier_models",
-        tags=["OpenAI", "GPT-5"],
+        tags=["OpenAI"],
     )
 
     events, event_articles, updated = cluster_articles([a, b])
@@ -1018,6 +1018,171 @@ def test_step89_clustering_performance_scaling():
     # 2. Scaling ratio between 10x dataset growth (100 -> 1000) must scale smoothly without abnormal blow-ups (< 100x ratio)
     scaling_ratio = timings[1000] / max(timings[100], 0.001)
     assert scaling_ratio < 100.0, f"Abnormal non-linear blowup detected: 10x size gave {scaling_ratio:.1f}x time"
+
+
+# ── STEP 8.7.1 Mandatory Regression Tests ─────────────────────────────────────
+
+
+def test_step871_test_a_same_launch_pricing_and_release():
+    """Test A: Same launch pricing + release MUST assert len(events) == 1 and same event_id."""
+    a = Article(
+        article_id="step871_a1_launch",
+        title="OpenAI launches GPT-5 frontier AI model",
+        url="https://openai.com/gpt-5-launch",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="step871_a2_pricing",
+        title="OpenAI announces GPT-5 pricing and API rates",
+        url="https://theverge.com/openai-gpt-5-pricing",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    events, event_articles, updated = cluster_articles([a, b])
+    assert len(events) == 1, f"Expected 1 event for same launch pricing + release, got {len(events)}"
+    a_ev = next(art.event_id for art in updated if art.article_id == "step871_a1_launch")
+    b_ev = next(art.event_id for art in updated if art.article_id == "step871_a2_pricing")
+    assert a_ev == b_ev, "Both article IDs must have the same event_id"
+    assert a_ev == events[0].event_id
+
+
+def test_step871_test_b_unrelated_pricing_and_release():
+    """Test B: Unrelated pricing + release MUST assert len(events) == 2."""
+    a = Article(
+        article_id="step871_b1_launch",
+        title="OpenAI launches GPT-5",
+        url="https://openai.com/gpt-5-launch",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="step871_b2_pricing",
+        title="OpenAI changes API pricing for an unrelated older product",
+        url="https://techcrunch.com/openai-older-pricing",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["OpenAI"],
+    )
+    events, event_articles, updated = cluster_articles([a, b])
+    assert len(events) == 2, f"Expected 2 events for unrelated pricing + release, got {len(events)}"
+    a_ev = next(art.event_id for art in updated if art.article_id == "step871_b1_launch")
+    b_ev = next(art.event_id for art in updated if art.article_id == "step871_b2_pricing")
+    assert a_ev != b_ev, "Unrelated pricing and release must have distinct event_ids"
+
+
+def test_step871_test_c_exact_chaining_membership():
+    """Test C: Exact chaining membership: A = release, B = release + broad office wording, C = office."""
+    a = Article(
+        article_id="step871_c_rel",
+        title="Anthropic releases Claude 3.5 Sonnet frontier AI model",
+        url="https://anthropic.com/claude-35-sonnet",
+        source="Anthropic",
+        category="frontier_models",
+        tags=["Anthropic", "Claude 3.5 Sonnet"],
+    )
+    b = Article(
+        article_id="step871_c_broad",
+        title="Anthropic releases Claude 3.5 Sonnet model availability amid European headquarters expansion",
+        url="https://theverge.com/anthropic-claude-35-europe",
+        source="The Verge",
+        category="frontier_models",
+        tags=["Anthropic", "Claude 3.5 Sonnet"],
+    )
+    c = Article(
+        article_id="step871_c_office",
+        title="Anthropic opens new corporate office in London for sales operations",
+        url="https://techcrunch.com/anthropic-london-office",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["Anthropic"],
+    )
+    events, event_articles, updated = cluster_articles([a, b, c])
+    assert len(events) == 2, f"Expected 2 events, got {len(events)}"
+
+    cluster_memberships = [
+        {art.article_id for art in updated if art.event_id == ev.event_id}
+        for ev in events
+    ]
+    assert {"step871_c_rel", "step871_c_broad"} in cluster_memberships, "Expected {A, B} exact cluster"
+    assert {"step871_c_office"} in cluster_memberships, "Expected {C} exact cluster"
+
+
+def test_step871_test_d_conflict_loophole_not_bypassed():
+    """Test D: Conflict loophole - shared action does NOT automatically bypass ACTION_CONFLICTS."""
+    a = Article(
+        article_id="step871_d_rel_part",
+        title="OpenAI and Microsoft partner to release new frontier AI model",
+        url="https://openai.com/msft-partnership-release",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "Microsoft"],
+    )
+    b = Article(
+        article_id="step871_d_part",
+        title="OpenAI and Microsoft announce strategic partnership expansion",
+        url="https://theverge.com/msft-openai-partnership",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "Microsoft"],
+    )
+    c = Article(
+        article_id="step871_d_legal",
+        title="EU opens formal antitrust lawsuit and regulatory investigation into OpenAI",
+        url="https://reuters.com/eu-openai-lawsuit",
+        source="Reuters",
+        category="frontier_models",
+        tags=["OpenAI"],
+    )
+    events, event_articles, updated = cluster_articles([a, b, c])
+    assert len(events) == 2, f"Expected 2 events, got {len(events)}"
+    a_ev = next(art.event_id for art in updated if art.article_id == "step871_d_rel_part")
+    b_ev = next(art.event_id for art in updated if art.article_id == "step871_d_part")
+    c_ev = next(art.event_id for art in updated if art.article_id == "step871_d_legal")
+    assert a_ev == b_ev, "A and B should cluster together into the partnership event"
+    assert c_ev != a_ev, "EU regulatory lawsuit C must NOT bypass action conflicts and merge into release/partnership"
+
+
+def test_step871_test_e_structured_event_anchor():
+    """Test E: Structured EventAnchor compatibility.
+    (same entity + same model + compatible actions) gets stronger compatibility than
+    (same entity + different model + unrelated action).
+    """
+    a = Article(
+        article_id="step871_e_rel",
+        title="OpenAI launches GPT-5 flagship model for enterprise developers",
+        url="https://openai.com/gpt5-enterprise",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="step871_e_pricing",
+        title="OpenAI announces GPT-5 pricing and token costs for developers",
+        url="https://theverge.com/gpt5-token-pricing",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    c = Article(
+        article_id="step871_e_unrelated",
+        title="Researchers discover security vulnerability in legacy GPT-3.5 safety filters",
+        url="https://wired.com/gpt35-vulnerability",
+        source="WIRED",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-3.5"],
+    )
+    events, event_articles, updated = cluster_articles([a, b, c])
+    assert len(events) == 2, f"Expected 2 events, got {len(events)}"
+    a_ev = next(art.event_id for art in updated if art.article_id == "step871_e_rel")
+    b_ev = next(art.event_id for art in updated if art.article_id == "step871_e_pricing")
+    c_ev = next(art.event_id for art in updated if art.article_id == "step871_e_unrelated")
+    assert a_ev == b_ev, "Same entity + same model + compatible actions must cluster"
+    assert c_ev != a_ev, "Different model + unrelated action must stay separate"
+
 
 
 
