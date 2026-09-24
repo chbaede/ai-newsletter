@@ -1345,6 +1345,66 @@ def test_step872_test_e_exact_chaining():
     assert {"step872_e_office"} in cluster_memberships, "Expected {C} exact cluster"
 
 
+# ── STEP 8.7.3 Mandatory Regression Tests: Aggregate Cluster Pricing Context ───
+
+
+def test_step873_aggregate_cluster_unrelated_pricing():
+    """Test STEP 8.7.3: Aggregate cluster containing both pricing and release actions
+    must NOT allow an unrelated Claude pricing article to merge into the GPT-5 launch cluster.
+
+    Cluster:
+        A = OpenAI releases GPT-5
+        B = OpenAI announces GPT-5 pricing
+    Candidate:
+        C = OpenAI announces Claude model API pricing update
+
+    Expected:
+        GPT-5 release + GPT-5 pricing -> one event {A, B}
+        Unrelated Claude pricing -> separate event {C}
+    Must be deterministic under both forward and reversed input orders.
+    """
+    a = Article(
+        article_id="step873_a_gpt5_rel",
+        title="OpenAI releases GPT-5 frontier AI model",
+        url="https://openai.com/gpt5-release",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="step873_b_gpt5_pricing",
+        title="OpenAI announces GPT-5 pricing and API subscription tiers",
+        url="https://theverge.com/gpt5-pricing",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    c = Article(
+        article_id="step873_c_claude_pricing",
+        title="OpenAI announces Claude model API pricing update",
+        url="https://techcrunch.com/claude-pricing",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["OpenAI", "Claude"],
+    )
+
+    for order_name, article_list in [("forward", [a, b, c]), ("reversed", [c, b, a])]:
+        events, event_articles, updated = cluster_articles(article_list)
+        assert len(events) == 2, f"[{order_name}] Expected exactly 2 events, got {len(events)}"
+
+        memberships = [
+            {art.article_id for art in updated if art.event_id == ev.event_id}
+            for ev in events
+        ]
+        assert {"step873_a_gpt5_rel", "step873_b_gpt5_pricing"} in memberships, (
+            f"[{order_name}] Expected GPT-5 release + pricing to form a single exact cluster"
+        )
+        assert {"step873_c_claude_pricing"} in memberships, (
+            f"[{order_name}] Expected unrelated Claude pricing to form an isolated exact cluster"
+        )
+
+
+
 
 
 
