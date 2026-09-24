@@ -1184,6 +1184,168 @@ def test_step871_test_e_structured_event_anchor():
     assert c_ev != a_ev, "Different model + unrelated action must stay separate"
 
 
+# ── STEP 8.7.2 Mandatory Regression Tests: Structured EventAnchor ─────────────
+
+
+def test_step872_test_a_structured_same_launch():
+    """Test A: (release, openai, gpt5) and (pricing, openai, gpt5) -> One event, same event_id."""
+    a = Article(
+        article_id="step872_a_rel",
+        title="OpenAI releases GPT-5 frontier model",
+        url="https://openai.com/gpt-5-release",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="step872_a_pricing",
+        title="OpenAI announces GPT-5 pricing and API subscription tiers",
+        url="https://theverge.com/gpt-5-pricing-tiers",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    events, event_articles, updated = cluster_articles([a, b])
+    assert len(events) == 1, f"Expected 1 event for structured same launch, got {len(events)}"
+    a_ev = next(art.event_id for art in updated if art.article_id == "step872_a_rel")
+    b_ev = next(art.event_id for art in updated if art.article_id == "step872_a_pricing")
+    assert a_ev == b_ev, "Both articles must share the same event_id"
+    assert a_ev == events[0].event_id
+
+
+def test_step872_test_b_structured_different_model():
+    """Test B: (release, openai, gpt5) vs (pricing, openai, claude) -> Separate events."""
+    a = Article(
+        article_id="step872_b_rel",
+        title="OpenAI releases GPT-5 frontier model",
+        url="https://openai.com/gpt-5-release",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b = Article(
+        article_id="step872_b_pricing",
+        title="OpenAI announces Claude model API pricing update",
+        url="https://techcrunch.com/openai-claude-pricing",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["OpenAI", "Claude"],
+    )
+    events, event_articles, updated = cluster_articles([a, b])
+    assert len(events) == 2, f"Expected 2 separate events for different structured model anchors, got {len(events)}"
+    a_ev = next(art.event_id for art in updated if art.article_id == "step872_b_rel")
+    b_ev = next(art.event_id for art in updated if art.article_id == "step872_b_pricing")
+    assert a_ev != b_ev, "Articles with different structured models must have distinct event_ids"
+
+
+def test_step872_test_c_unrelated_additional_model():
+    """Test C: Pricing mentions GPT-5. Release mentions GPT-5 and unrelated second model (Claude).
+    Ensures implementation does not rely on an unsafe one-sided subset check (pricing_models <= release_models).
+    """
+    a_pricing = Article(
+        article_id="step872_c_pricing",
+        title="OpenAI announces GPT-5 pricing and API token rates",
+        url="https://theverge.com/openai-gpt5-pricing",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    b_release_multi = Article(
+        article_id="step872_c_rel_multi",
+        title="OpenAI launches GPT-5 model alongside Anthropic Claude comparison benchmark",
+        url="https://techcrunch.com/openai-gpt5-claude-launch",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5", "Claude"],
+    )
+    events, event_articles, updated = cluster_articles([a_pricing, b_release_multi])
+    assert len(events) == 2, f"Expected 2 separate events due to unrelated additional model in release, got {len(events)}"
+    p_ev = next(art.event_id for art in updated if art.article_id == "step872_c_pricing")
+    r_ev = next(art.event_id for art in updated if art.article_id == "step872_c_rel_multi")
+    assert p_ev != r_ev, "Unrelated additional model must prevent single launch merge"
+
+
+def test_step872_test_d_conflict_loophole():
+    """Test D: Cluster contains shared action (partnership) plus conflicting action (release).
+    Candidate has unrelated conflicting action (legal).
+    Shared action (partnership) must NOT bypass the specific release ↔ legal conflict.
+    """
+    a_partner_rel = Article(
+        article_id="step872_d_partner_rel",
+        title="OpenAI and Microsoft partner to release new frontier AI model",
+        url="https://openai.com/msft-partnership-release",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "Microsoft"],
+    )
+    b_partner = Article(
+        article_id="step872_d_partner",
+        title="OpenAI and Microsoft announce strategic partnership expansion",
+        url="https://theverge.com/msft-openai-partnership",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "Microsoft"],
+    )
+    c_legal = Article(
+        article_id="step872_d_legal",
+        title="EU opens formal antitrust lawsuit and regulatory investigation into OpenAI",
+        url="https://reuters.com/eu-openai-lawsuit",
+        source="Reuters",
+        category="frontier_models",
+        tags=["OpenAI"],
+    )
+    events, event_articles, updated = cluster_articles([a_partner_rel, b_partner, c_legal])
+    assert len(events) == 2, f"Expected 2 events, got {len(events)}"
+    a_ev = next(art.event_id for art in updated if art.article_id == "step872_d_partner_rel")
+    b_ev = next(art.event_id for art in updated if art.article_id == "step872_d_partner")
+    c_ev = next(art.event_id for art in updated if art.article_id == "step872_d_legal")
+    assert a_ev == b_ev, "A and B should cluster into the partnership event"
+    assert c_ev != a_ev, "Legal action C must NOT merge into release/partnership cluster despite shared partnership"
+
+
+def test_step872_test_e_exact_chaining():
+    """Test E: Exact chaining membership:
+    A = release
+    B = release + broad office wording
+    C = office
+    Assert exact membership: {A, B} and {C}.
+    """
+    a = Article(
+        article_id="step872_e_rel",
+        title="Anthropic releases Claude 3.5 Sonnet frontier AI model",
+        url="https://anthropic.com/claude-35-sonnet",
+        source="Anthropic",
+        category="frontier_models",
+        tags=["Anthropic", "Claude 3.5 Sonnet"],
+    )
+    b = Article(
+        article_id="step872_e_broad",
+        title="Anthropic releases Claude 3.5 Sonnet model availability amid European headquarters expansion",
+        url="https://theverge.com/anthropic-claude-35-europe",
+        source="The Verge",
+        category="frontier_models",
+        tags=["Anthropic", "Claude 3.5 Sonnet"],
+    )
+    c = Article(
+        article_id="step872_e_office",
+        title="Anthropic opens new corporate office in London for sales operations",
+        url="https://techcrunch.com/anthropic-london-office",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["Anthropic"],
+    )
+    events, event_articles, updated = cluster_articles([a, b, c])
+    assert len(events) == 2, f"Expected 2 events, got {len(events)}"
+
+    cluster_memberships = [
+        {art.article_id for art in updated if art.event_id == ev.event_id}
+        for ev in events
+    ]
+    assert {"step872_e_rel", "step872_e_broad"} in cluster_memberships, "Expected {A, B} exact cluster"
+    assert {"step872_e_office"} in cluster_memberships, "Expected {C} exact cluster"
+
+
+
 
 
 

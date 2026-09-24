@@ -117,7 +117,7 @@ STOP_WORDS = {
 
 AI_MODEL_PATTERNS = [
     re.compile(r"\b(gpt-?4o?|gpt-?5|gpt-?3\.5|o1-preview|o1-mini|o1|o3)\b", re.I),
-    re.compile(r"\b(claude\s*3(?:\.5)?(?:\s*(?:sonnet|opus|haiku))?|클로드\s*3(?:\.5)?)\b", re.I),
+    re.compile(r"\b(claude(?:\s*(?:3(?:\.5)?|4))?(?:\s*(?:sonnet|opus|haiku))?|클로드(?:\s*(?:3(?:\.5)?|4))?)\b", re.I),
     re.compile(r"\b(gemini\s*(?:1\.5|2\.0)?(?:\s*(?:flash|pro|ultra))?|제미나이(?:\s*(?:1\.5|2\.0))?)\b", re.I),
     re.compile(r"\b(llama\s*(?:2|3|3\.1|3\.2|3\.3)?|라마\s*(?:2|3|3\.1|3\.2|3\.3)?)\b", re.I),
     re.compile(r"\b(blackwell|b200|b100|h100|h200|gb200|블랙웰)\b", re.I),
@@ -215,6 +215,27 @@ def _shared_entity_model_pairs(
 ) -> set[tuple[str, str]]:
     """Return shared concrete (entity, model) pairs across two anchor sets."""
     return _extract_entity_model_pairs(anchors1) & _extract_entity_model_pairs(anchors2)
+
+
+def _shared_structured_anchor_context(
+    anchors1: Iterable[tuple[str, str | None, str | None]],
+    anchors2: Iterable[tuple[str, str | None, str | None]],
+) -> set[tuple[str, str]]:
+    """Return shared concrete (entity, model) pairs across structured anchors."""
+    return _shared_entity_model_pairs(anchors1, anchors2)
+
+
+def _has_structured_launch_context(
+    anchors1: Iterable[tuple[str, str | None, str | None]],
+    anchors2: Iterable[tuple[str, str | None, str | None]],
+) -> bool:
+    """Check if two anchor sets share the same concrete (entity, model) with release/pricing actions."""
+    rel_pairs_1 = {(ent, mod) for (act, ent, mod) in anchors1 if act == "release" and ent and mod}
+    pri_pairs_1 = {(ent, mod) for (act, ent, mod) in anchors1 if act == "pricing" and ent and mod}
+    rel_pairs_2 = {(ent, mod) for (act, ent, mod) in anchors2 if act == "release" and ent and mod}
+    pri_pairs_2 = {(ent, mod) for (act, ent, mod) in anchors2 if act == "pricing" and ent and mod}
+
+    return bool((rel_pairs_1 & pri_pairs_2) | (pri_pairs_1 & rel_pairs_2))
 
 
 # ── Feature & Anchor Data Structures ──────────────────────────────────────────
@@ -331,8 +352,9 @@ def _is_same_launch_context(
     A valid same-launch context strongly requires:
     - Shared entity (e.g. OpenAI)
     - Shared model (e.g. GPT-5)
-    - One side has release action/theme, other side has pricing action/theme
-    - No conflicting disjoint model mentions
+    - Exactly one side has release action/theme, other side has pricing action/theme
+    - No clearly unrelated additional model context on either side (symmetric model matching)
+    - Compatible structured (action, entity, model) anchors
     """
     eff_act1 = _effective_actions(f1)
     eff_act2 = _effective_actions(f2)
@@ -363,10 +385,12 @@ def _is_same_launch_context(
     if not shared_models:
         return False
 
-    # Check that neither article introduces an unrelated conflicting model
-    pricing_feat = f1 if has_pricing_1 else f2
-    release_feat = f2 if has_pricing_1 else f1
-    if pricing_feat.models - release_feat.models:
+    # Symmetric model check: neither article may introduce an unrelated second model
+    if f1.models != f2.models:
+        return False
+
+    # Compatible structured (action, entity, model) anchors required
+    if not _has_structured_launch_context(f1.anchors, f2.anchors):
         return False
 
     return True
@@ -977,7 +1001,7 @@ def _has_action_conflict(
     """
     conflicts: list[tuple[str, str]] = []
     for conflict_set in ACTION_CONFLICTS:
-        acts = list(conflict_set)
+        acts = sorted(conflict_set)
         act1, act2 = acts[0], acts[1]
         if act1 in candidate_actions and act2 in cluster_actions:
             conflicts.append((act1, act2))
@@ -1001,7 +1025,7 @@ def _is_conflict_contextually_compatible(
     """
     conflict_pair = frozenset({act_cand, act_clust})
     cand_eff = _effective_actions(candidate_feat)
-    shared_models = candidate_feat.models & cluster_anchor.models
+    shared_entity_models = _shared_entity_model_pairs(candidate_feat.anchors, cluster_anchor.anchors)
     shared_entities = candidate_feat.entities & cluster_anchor.entities
 
     # 1. office_expansion or executive_movement vs release or pricing
@@ -1013,12 +1037,12 @@ def _is_conflict_contextually_compatible(
         frozenset({"office_expansion", "executive_movement"}),
     }:
         if act_cand in {"office_expansion", "executive_movement"}:
-            if "release" in cand_eff and shared_models:
+            if "release" in cand_eff and shared_entity_models:
                 return True
             return False
 
         if act_clust in {"office_expansion", "executive_movement"}:
-            if "release" in cluster_anchor.actions and shared_models:
+            if "release" in cluster_anchor.actions and "release" in cand_eff and shared_entity_models:
                 return True
             return False
 
@@ -1031,10 +1055,12 @@ def _is_conflict_contextually_compatible(
     # 3. legal vs release
     if conflict_pair == frozenset({"release", "legal"}):
         if act_cand == "legal":
-            if "release" in cand_eff and shared_models:
+            if "release" in cand_eff and shared_entity_models:
                 return True
         if act_clust == "legal":
-            if "release" in cluster_anchor.actions and shared_models:
+            if "release" in cluster_anchor.actions and "release" in cand_eff and shared_entity_models:
+                return True
+            if "legal" in cand_eff and "release" in cand_eff and shared_entity_models:
                 return True
         if bool(candidate_feat.themes & cluster_anchor.themes & {"legal_policy"}) and len(shared_entities) >= 2:
             return True
@@ -1050,13 +1076,13 @@ def _is_conflict_contextually_compatible(
     # 5. security vs release
     if conflict_pair == frozenset({"release", "security"}):
         if act_cand == "security":
-            if "release" in cand_eff and shared_models:
+            if "release" in cand_eff and shared_entity_models:
                 return True
         if act_clust == "security":
-            if "release" in cluster_anchor.actions and shared_models:
+            if "release" in cluster_anchor.actions and "release" in cand_eff and shared_entity_models:
                 return True
         has_shared_sec_theme = bool(candidate_feat.themes & cluster_anchor.themes & {"security_safety", "partnership"})
-        if has_shared_sec_theme and (shared_models or len(shared_entities) >= 2):
+        if has_shared_sec_theme and (shared_entity_models or len(shared_entities) >= 2):
             return True
         return False
 
@@ -1113,6 +1139,21 @@ def is_candidate_compatible_with_cluster(
 
     # Candidate effective actions
     candidate_actions = _effective_actions(candidate_feat)
+
+    # Structured launch context check for pricing
+    if ("pricing" in candidate_actions) ^ ("pricing" in cluster_anchor.actions):
+        if not _has_structured_launch_context(candidate_feat.anchors, cluster_anchor.anchors):
+            return False, 0.0
+
+    # Disjoint model check with cluster anchor
+    if candidate_feat.models and cluster_anchor.models and candidate_feat.models.isdisjoint(cluster_anchor.models):
+        has_multi_entity_joint_anchor = len(candidate_feat.entities & cluster_anchor.entities) >= 2
+        has_joint_event_anchor = bool(
+            (candidate_feat.themes & cluster_anchor.themes) & {"partnership", "security_safety", "legal_policy", "benchmarking"}
+            or (candidate_actions & cluster_anchor.actions) & {"partnership", "security", "legal"}
+        )
+        if not (has_multi_entity_joint_anchor or has_joint_event_anchor):
+            return False, 0.0
 
     # Cluster-level action conflict checking against ACTION_CONFLICTS evaluated pair-by-pair
     conflicts = _has_action_conflict(candidate_actions, cluster_anchor.actions)
