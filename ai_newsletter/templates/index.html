@@ -699,6 +699,564 @@
   </main>
 </div>
 
+<style>
+/* ── Self-Contained High-Specificity Styles for Mail Settings Modal ── */
+#mailSettingsModal.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  animation: msetFadeIn 0.18s ease;
+}
+
+@keyframes msetFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+#mailSettingsModal .mset-card {
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 18px;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.05);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  animation: msetPopIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes msetPopIn {
+  from { transform: scale(0.95) translateY(10px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+html.dark-mode #mailSettingsModal .mset-card {
+  background: #131b2e;
+  border-color: #334155;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+}
+
+/* Hero Header */
+#mailSettingsModal .mset-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-bottom: 1px solid #bae6fd;
+  border-radius: 18px 18px 0 0;
+  box-sizing: border-box;
+}
+
+html.dark-mode #mailSettingsModal .mset-hero {
+  background: linear-gradient(135deg, #082f49 0%, #0c3e5f 100%);
+  border-bottom-color: #0369a1;
+}
+
+#mailSettingsModal .mset-hero-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #ffffff;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(2, 132, 199, 0.35);
+}
+
+#mailSettingsModal .mset-hero-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+#mailSettingsModal .mset-hero-text {
+  flex: 1;
+  min-width: 0;
+}
+
+#mailSettingsModal .mset-hero-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+html.dark-mode #mailSettingsModal .mset-hero-title {
+  color: #f8fafc;
+}
+
+#mailSettingsModal .mset-hero-sub {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+html.dark-mode #mailSettingsModal .mset-hero-sub {
+  color: #94a3b8;
+}
+
+#mailSettingsModal .mset-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(2, 132, 199, 0.2);
+  background: rgba(255, 255, 255, 0.8);
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+#mailSettingsModal .mset-close:hover {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+html.dark-mode #mailSettingsModal .mset-close {
+  background: rgba(15, 23, 42, 0.5);
+  color: #94a3b8;
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+html.dark-mode #mailSettingsModal .mset-close:hover {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+#mailSettingsModal .mset-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Body */
+#mailSettingsModal .mset-body {
+  padding: 18px 20px 20px;
+  box-sizing: border-box;
+}
+
+/* Blocks */
+#mailSettingsModal .mset-block {
+  padding-bottom: 16px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #e2e8f0;
+  box-sizing: border-box;
+}
+
+html.dark-mode #mailSettingsModal .mset-block {
+  border-bottom-color: #1e293b;
+}
+
+#mailSettingsModal .mset-block-last {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+#mailSettingsModal .mset-block-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+#mailSettingsModal .mset-block-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+#mailSettingsModal .mset-block-badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+#mailSettingsModal .mset-badge-blue   { background: #dbeafe; color: #2563eb; }
+#mailSettingsModal .mset-badge-violet { background: #ede9fe; color: #7c3aed; }
+#mailSettingsModal .mset-badge-green  { background: #dcfce7; color: #16a34a; }
+
+html.dark-mode #mailSettingsModal .mset-badge-blue   { background: #1e3a5f; color: #60a5fa; }
+html.dark-mode #mailSettingsModal .mset-badge-violet { background: #2e1065; color: #a78bfa; }
+html.dark-mode #mailSettingsModal .mset-badge-green  { background: #052e16; color: #4ade80; }
+
+#mailSettingsModal .mset-block-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+html.dark-mode #mailSettingsModal .mset-block-title {
+  color: #94a3b8;
+}
+
+/* Rows & Fields */
+#mailSettingsModal .mset-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+#mailSettingsModal .mset-row-split {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+#mailSettingsModal .mset-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+}
+
+#mailSettingsModal .mset-field-grow {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+#mailSettingsModal .mset-field-port {
+  width: 85px;
+  flex-shrink: 0;
+}
+
+#mailSettingsModal .mset-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #334155;
+  letter-spacing: 0.01em;
+}
+
+html.dark-mode #mailSettingsModal .mset-label {
+  color: #cbd5e1;
+}
+
+/* Input with icon */
+#mailSettingsModal .mset-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#mailSettingsModal .mset-input-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  color: #94a3b8;
+  pointer-events: none;
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+#mailSettingsModal .mset-input {
+  width: 100%;
+  height: 38px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 10px 0 32px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #0f172a;
+  background: #f8fafc;
+  outline: none;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+html.dark-mode #mailSettingsModal .mset-input {
+  background: #0f172a;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+#mailSettingsModal .mset-input-center {
+  padding-left: 10px;
+  text-align: center;
+  font-weight: 700;
+}
+
+#mailSettingsModal .mset-input:focus {
+  border-color: #0284c7;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+html.dark-mode #mailSettingsModal .mset-input:focus {
+  background: #1e293b;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+}
+
+#mailSettingsModal .mset-input::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+#mailSettingsModal .mset-pw-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: #f1f5f9;
+  color: #64748b;
+  margin-left: 4px;
+}
+
+html.dark-mode #mailSettingsModal .mset-pw-badge {
+  background: #1e293b;
+  color: #94a3b8;
+}
+
+#mailSettingsModal .mset-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #64748b;
+  margin: 4px 0 0;
+  font-weight: 500;
+}
+
+html.dark-mode #mailSettingsModal .mset-hint {
+  color: #94a3b8;
+}
+
+/* Toggle Switch */
+#mailSettingsModal .mset-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+#mailSettingsModal .mset-toggle-row:hover {
+  background: #e2e8f0;
+}
+
+html.dark-mode #mailSettingsModal .mset-toggle-row {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+html.dark-mode #mailSettingsModal .mset-toggle-row:hover {
+  background: #283548;
+}
+
+#mailSettingsModal .mset-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+#mailSettingsModal .mset-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+#mailSettingsModal .mset-toggle-thumb {
+  position: absolute;
+  inset: 0;
+  border-radius: 99px;
+  background: #cbd5e1;
+  transition: background 0.2s ease;
+  cursor: pointer;
+}
+
+#mailSettingsModal .mset-toggle-thumb::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+#mailSettingsModal .mset-toggle input:checked + .mset-toggle-thumb {
+  background: #0284c7;
+}
+
+#mailSettingsModal .mset-toggle input:checked + .mset-toggle-thumb::after {
+  transform: translateX(16px);
+}
+
+#mailSettingsModal .mset-toggle-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+#mailSettingsModal .mset-toggle-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+html.dark-mode #mailSettingsModal .mset-toggle-title {
+  color: #f8fafc;
+}
+
+#mailSettingsModal .mset-toggle-desc {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+html.dark-mode #mailSettingsModal .mset-toggle-desc {
+  color: #94a3b8;
+}
+
+/* Footer Actions */
+#mailSettingsModal .mset-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+  box-sizing: border-box;
+}
+
+html.dark-mode #mailSettingsModal .mset-footer {
+  border-top-color: #1e293b;
+}
+
+#mailSettingsModal .mset-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  padding: 0 16px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+#mailSettingsModal .mset-btn-ghost:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+html.dark-mode #mailSettingsModal .mset-btn-ghost {
+  background: transparent;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+html.dark-mode #mailSettingsModal .mset-btn-ghost:hover {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+#mailSettingsModal .mset-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+#mailSettingsModal .mset-btn-primary:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+}
+
+#mailSettingsModal .mset-btn-primary:active {
+  transform: translateY(0);
+}
+
+#mailSettingsModal .mset-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  transform: none;
+}
+
+@media (max-width: 500px) {
+  #mailSettingsModal .mset-row-split {
+    flex-direction: column;
+  }
+  #mailSettingsModal .mset-field-port {
+    width: 100%;
+  }
+  #mailSettingsModal .mset-footer {
+    flex-direction: column-reverse;
+  }
+  #mailSettingsModal .mset-btn-ghost,
+  #mailSettingsModal .mset-btn-primary {
+    width: 100%;
+  }
+}
+</style>
+
 <!-- Mail Settings Modal Dialog -->
 <div class="modal-backdrop" id="mailSettingsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="mailModalTitle">
   <div class="mset-card">
