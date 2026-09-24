@@ -1427,26 +1427,49 @@ def _assert_gpt5_launch_clustering_membership(
     """Verify that clustering produced exactly two events: {A, B} and {C}."""
     assert len(events) == 2, f"[{test_label}] Expected exactly 2 events, got {len(events)}"
 
+    expected_ids = {id_a, id_b, id_c}
     assigned_ids = [art.article_id for art in updated if art.event_id]
+    actual_ids = set(assigned_ids)
+
+    # Verify no article is missing and all articles are assigned
     assert len(assigned_ids) == 3, f"[{test_label}] Expected 3 assigned articles, got {len(assigned_ids)}"
-    assert set(assigned_ids) == {id_a, id_b, id_c}, (
-        f"[{test_label}] Missing articles: {{id_a, id_b, id_c}} - {set(assigned_ids)}"
+    assert actual_ids == expected_ids, (
+        f"[{test_label}] Missing articles: {expected_ids - actual_ids}, unexpected: {actual_ids - expected_ids}"
     )
 
+    # Verify every article belongs to exactly one event
     ev_by_art = {art.article_id: art.event_id for art in updated}
-    assert len(ev_by_art) == 3, f"[{test_label}] Duplicate article assignment detected"
+    assert len(ev_by_art) == 3, f"[{test_label}] Duplicate or missing article ID in updated articles"
+    for art in updated:
+        assert art.event_id is not None and art.event_id != "", (
+            f"[{test_label}] Article {art.article_id} has empty event_id"
+        )
 
-    assert ev_by_art[id_a] == ev_by_art[id_b], (
-        f"[{test_label}] A and B must belong to the same event"
-    )
-    assert ev_by_art[id_c] != ev_by_art[id_a], (
-        f"[{test_label}] C must belong to a separate event from A and B"
-    )
+    # Cluster member sets partitioned by event
+    event_ids = {ev.event_id for ev in events}
+    assert len(event_ids) == 2, f"[{test_label}] Expected 2 unique event IDs, got {len(event_ids)}"
 
     memberships = [
         {art.article_id for art in updated if art.event_id == ev.event_id}
         for ev in events
     ]
+    # Verify events partition the articles with no overlap (disjoint sets)
+    assert memberships[0].isdisjoint(memberships[1]), (
+        f"[{test_label}] Event memberships overlap: {memberships[0] & memberships[1]}"
+    )
+    assert memberships[0] | memberships[1] == expected_ids, (
+        f"[{test_label}] Event memberships union does not equal expected articles"
+    )
+
+    # A and B share event; C is isolated in separate event
+    assert ev_by_art[id_a] == ev_by_art[id_b], (
+        f"[{test_label}] Articles {id_a} and {id_b} must belong to the same event"
+    )
+    assert ev_by_art[id_c] != ev_by_art[id_a], (
+        f"[{test_label}] Article {id_c} must belong to a separate event from {id_a} and {id_b}"
+    )
+
+    # Exact membership verification
     assert {id_a, id_b} in memberships, (
         f"[{test_label}] Expected exact cluster {{{id_a}, {id_b}}} in {memberships}"
     )
@@ -1697,6 +1720,12 @@ def test_step874_exact_chaining_scenarios():
             art_map[key].priority_score = 100.0 - rank * 10.0
 
         articles_to_cluster = [art_map[k] for k in order_keys]
+        sorted_indices = _sort_article_indices_for_clustering(articles_to_cluster)
+        actual_order = [articles_to_cluster[i].article_id for i in sorted_indices]
+        assert actual_order == order_keys, (
+            f"[{sc_name}] Expected processing order {order_keys}, got {actual_order}"
+        )
+
         events, _, updated = cluster_articles(articles_to_cluster)
         _assert_gpt5_launch_clustering_membership(
             events, updated, sc_name, "step874_rel", "step874_pricing", "step874_claude_pricing"
