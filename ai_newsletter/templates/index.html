@@ -699,124 +699,162 @@
   </main>
 </div>
 
-<!-- Mail Settings Modal Dialog (팝업 모달) -->
+<!-- Mail Settings Modal Dialog -->
 <div class="modal-backdrop" id="mailSettingsModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="mailModalTitle">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-title-group">
-        <i data-lucide="mail" class="modal-icon"></i>
-        <div>
-          <h3 class="modal-title" id="mailModalTitle">
-            <span class="lang-ko">이메일 SMTP 발송 설정</span>
-            <span class="lang-en" style="display:none;">Mail SMTP Configuration</span>
-          </h3>
-          <p class="modal-subtitle">
-            <span class="lang-ko">뉴스레터 이메일 발송에 필요한 SMTP 서버 및 수신자 정보를 관리합니다.</span>
-            <span class="lang-en" style="display:none;">Manage outbound SMTP credentials and newsletter subscriber addresses.</span>
-          </p>
-        </div>
+  <div class="mset-card">
+
+    <!-- Hero Header -->
+    <div class="mset-hero">
+      <div class="mset-hero-icon">
+        <i data-lucide="mail"></i>
       </div>
-      <button type="button" class="modal-close-btn" data-close-mail-settings title="닫기 (Close)">
+      <div class="mset-hero-text">
+        <h3 class="mset-hero-title" id="mailModalTitle">
+          <span class="lang-ko">이메일 발송 설정</span>
+          <span class="lang-en" style="display:none;">Email Settings</span>
+        </h3>
+        <p class="mset-hero-sub">
+          <span class="lang-ko">SMTP 서버 및 수신자 정보를 설정합니다</span>
+          <span class="lang-en" style="display:none;">Configure your SMTP server and recipients</span>
+        </p>
+      </div>
+      <button type="button" class="mset-close" data-close-mail-settings title="닫기">
         <i data-lucide="x"></i>
       </button>
     </div>
 
-    <div class="modal-body">
+    <!-- Form Body -->
+    <div class="mset-body">
       <form data-mail-settings-form>
 
-        <!-- Section 1: SMTP Server -->
-        <div class="mail-section">
-          <div class="mail-section-label">
-            <i data-lucide="server" style="width:14px;height:14px;"></i>
-            <span class="lang-ko">SMTP 서버</span>
-            <span class="lang-en" style="display:none;">SMTP Server</span>
+        <!-- Block 1: Server -->
+        <div class="mset-block">
+          <div class="mset-block-header">
+            <span class="mset-block-badge mset-badge-blue">
+              <i data-lucide="server"></i>
+            </span>
+            <span class="mset-block-title">
+              <span class="lang-ko">서버 설정</span>
+              <span class="lang-en" style="display:none;">Server</span>
+            </span>
           </div>
-          <div class="mail-form-grid mail-grid-2">
-            <div class="mail-field">
-              <label>Host</label>
-              <input type="text" name="smtp_host" placeholder="smtp.gmail.com">
+          <div class="mset-row mset-row-split">
+            <div class="mset-field mset-field-grow">
+              <label class="mset-label">Host</label>
+              <div class="mset-input-wrap">
+                <i data-lucide="globe" class="mset-input-icon"></i>
+                <input type="text" name="smtp_host" placeholder="smtp.gmail.com" class="mset-input">
+              </div>
             </div>
-            <div class="mail-field mail-field-short">
-              <label>Port</label>
-              <input type="number" name="smtp_port" value="587">
+            <div class="mset-field mset-field-port">
+              <label class="mset-label">Port</label>
+              <div class="mset-input-wrap">
+                <input type="number" name="smtp_port" value="587" class="mset-input mset-input-center">
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Section 2: Authentication -->
-        <div class="mail-section">
-          <div class="mail-section-label">
-            <i data-lucide="lock" style="width:14px;height:14px;"></i>
-            <span class="lang-ko">인증 정보</span>
-            <span class="lang-en" style="display:none;">Authentication</span>
+        <!-- Block 2: Auth -->
+        <div class="mset-block">
+          <div class="mset-block-header">
+            <span class="mset-block-badge mset-badge-violet">
+              <i data-lucide="shield-check"></i>
+            </span>
+            <span class="mset-block-title">
+              <span class="lang-ko">인증 정보</span>
+              <span class="lang-en" style="display:none;">Authentication</span>
+            </span>
           </div>
-          <div class="mail-form-grid mail-grid-2">
-            <div class="mail-field">
-              <label>
-                <span class="lang-ko">사용자 (이메일)</span>
+          <div class="mset-row mset-row-split">
+            <div class="mset-field mset-field-grow">
+              <label class="mset-label">
+                <span class="lang-ko">이메일 / 아이디</span>
                 <span class="lang-en" style="display:none;">Username / Email</span>
               </label>
-              <input type="text" name="smtp_user" placeholder="user@example.com">
+              <div class="mset-input-wrap">
+                <i data-lucide="user" class="mset-input-icon"></i>
+                <input type="text" name="smtp_user" placeholder="user@example.com" class="mset-input">
+              </div>
             </div>
-            <div class="mail-field">
-              <label>
+            <div class="mset-field mset-field-grow">
+              <label class="mset-label">
                 <span class="lang-ko">비밀번호</span>
                 <span class="lang-en" style="display:none;">Password</span>
-                <small data-password-state class="mail-password-badge"></small>
+                <small data-password-state class="mset-pw-badge"></small>
               </label>
-              <input type="password" name="smtp_password" placeholder="App Password">
+              <div class="mset-input-wrap">
+                <i data-lucide="lock" class="mset-input-icon"></i>
+                <input type="password" name="smtp_password" placeholder="App Password" class="mset-input">
+              </div>
             </div>
           </div>
-          <div class="mail-tls-row">
-            <label class="mail-checkbox-label">
+          <label class="mset-toggle-row">
+            <div class="mset-toggle">
               <input type="checkbox" name="smtp_tls" checked>
-              <span>
-                <span class="lang-ko">STARTTLS 보안 연결 사용</span>
-                <span class="lang-en" style="display:none;">Use STARTTLS Secure Connection</span>
+              <span class="mset-toggle-thumb"></span>
+            </div>
+            <div class="mset-toggle-label">
+              <span class="mset-toggle-title">STARTTLS</span>
+              <span class="mset-toggle-desc">
+                <span class="lang-ko">TLS 암호화 보안 연결 사용</span>
+                <span class="lang-en" style="display:none;">Use TLS encrypted secure connection</span>
               </span>
-            </label>
-          </div>
+            </div>
+          </label>
         </div>
 
-        <!-- Section 3: Sender & Recipients -->
-        <div class="mail-section">
-          <div class="mail-section-label">
-            <i data-lucide="send" style="width:14px;height:14px;"></i>
-            <span class="lang-ko">발신 / 수신</span>
-            <span class="lang-en" style="display:none;">Sender / Recipients</span>
+        <!-- Block 3: Addresses -->
+        <div class="mset-block mset-block-last">
+          <div class="mset-block-header">
+            <span class="mset-block-badge mset-badge-green">
+              <i data-lucide="send"></i>
+            </span>
+            <span class="mset-block-title">
+              <span class="lang-ko">발신 / 수신 주소</span>
+              <span class="lang-en" style="display:none;">Addresses</span>
+            </span>
           </div>
-          <div class="mail-field">
-            <label>
+          <div class="mset-field">
+            <label class="mset-label">
               <span class="lang-ko">발신 주소 (From)</span>
               <span class="lang-en" style="display:none;">Sender Address (From)</span>
             </label>
-            <input type="text" name="smtp_from" placeholder="AI Newsletter <newsletter@example.com>">
+            <div class="mset-input-wrap">
+              <i data-lucide="at-sign" class="mset-input-icon"></i>
+              <input type="text" name="smtp_from" placeholder="AI Newsletter <newsletter@example.com>" class="mset-input">
+            </div>
           </div>
-          <div class="mail-field" style="margin-top:12px;">
-            <label>
+          <div class="mset-field">
+            <label class="mset-label">
               <span class="lang-ko">수신자 (To)</span>
-              <span class="lang-en" style="display:none;">Recipients (Newsletter To)</span>
+              <span class="lang-en" style="display:none;">Recipients</span>
             </label>
-            <input type="text" name="newsletter_to" placeholder="subscriber1@example.com, subscriber2@example.com">
-            <small class="mail-field-hint">
+            <div class="mset-input-wrap">
+              <i data-lucide="users" class="mset-input-icon"></i>
+              <input type="text" name="newsletter_to" placeholder="sub1@example.com, sub2@example.com" class="mset-input">
+            </div>
+            <p class="mset-hint">
+              <i data-lucide="info" style="width:11px;height:11px;opacity:0.6;flex-shrink:0;"></i>
               <span class="lang-ko">여러 수신자는 쉼표(,)로 구분</span>
               <span class="lang-en" style="display:none;">Separate multiple recipients with commas</span>
-            </small>
+            </p>
           </div>
         </div>
 
-        <!-- Actions -->
-        <div class="mail-modal-actions">
-          <button type="button" class="mail-btn-cancel" data-close-mail-settings>
-            <span class="lang-ko">닫기</span>
-            <span class="lang-en" style="display:none;">Close</span>
+        <!-- Footer Actions -->
+        <div class="mset-footer">
+          <button type="button" class="mset-btn-ghost" data-close-mail-settings>
+            <span class="lang-ko">취소</span>
+            <span class="lang-en" style="display:none;">Cancel</span>
           </button>
-          <button type="submit" class="mail-btn-save">
-            <i data-lucide="save" style="width:15px;height:15px;"></i>
-            <span class="lang-ko">설정 저장</span>
-            <span class="lang-en" style="display:none;">Save Settings</span>
+          <button type="submit" class="mset-btn-primary">
+            <i data-lucide="check" style="width:15px;height:15px;"></i>
+            <span class="lang-ko">저장하기</span>
+            <span class="lang-en" style="display:none;">Save</span>
           </button>
         </div>
+
       </form>
     </div>
   </div>
