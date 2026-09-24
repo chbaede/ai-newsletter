@@ -1142,11 +1142,12 @@ def is_candidate_compatible_with_cluster(
 
     # Structured launch context check between pricing and release
     # Ensures that a cluster already containing both release and pricing does not bypass
-    # the structured launch context check when an unrelated pricing candidate arrives.
-    if "pricing" in candidate_actions and "release" in cluster_anchor.actions:
-        if not _has_structured_launch_context(candidate_feat.anchors, cluster_anchor.anchors):
-            return False, 0.0
-    elif "release" in candidate_actions and "pricing" in cluster_anchor.actions:
+    # the structured launch context check when an unrelated pricing or release candidate arrives.
+    is_pricing_release_interaction = (
+        ("pricing" in candidate_actions and "release" in cluster_anchor.actions)
+        or ("release" in candidate_actions and "pricing" in cluster_anchor.actions)
+    )
+    if is_pricing_release_interaction:
         if not _has_structured_launch_context(candidate_feat.anchors, cluster_anchor.anchors):
             return False, 0.0
 
