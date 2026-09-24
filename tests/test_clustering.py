@@ -1,5 +1,14 @@
-from ai_newsletter.clustering import cluster_articles, select_primary_article
-from ai_newsletter.models import Article
+from ai_newsletter.clustering import (
+    cluster_articles,
+    select_primary_article,
+    extract_clustering_features,
+    is_candidate_compatible_with_cluster,
+    _sort_article_indices_for_clustering,
+    DEFAULT_EVENT_WINDOW_HOURS,
+    DEFAULT_SIMILARITY_THRESHOLD,
+    MIN_CLUSTER_COHESION_RATIO,
+)
+from ai_newsletter.models import Article, Event
 
 
 def test_cluster_articles_empty():
@@ -1404,12 +1413,143 @@ def test_step873_aggregate_cluster_unrelated_pricing():
         )
 
 
-# ── STEP 8.7.4 Mandatory Regression Tests: Permutation Determinism ──────────
+# ── STEP 8.7.4 / 8.7.5 Permutation Determinism & Fixture Isolation ──────────
+
+
+def _assert_gpt5_launch_clustering_membership(
+    events: list[Event],
+    updated: list[Article],
+    test_label: str,
+    id_a: str,
+    id_b: str,
+    id_c: str,
+) -> None:
+    """Verify that clustering produced exactly two events: {A, B} and {C}."""
+    assert len(events) == 2, f"[{test_label}] Expected exactly 2 events, got {len(events)}"
+
+    assigned_ids = [art.article_id for art in updated if art.event_id]
+    assert len(assigned_ids) == 3, f"[{test_label}] Expected 3 assigned articles, got {len(assigned_ids)}"
+    assert set(assigned_ids) == {id_a, id_b, id_c}, (
+        f"[{test_label}] Missing articles: {{id_a, id_b, id_c}} - {set(assigned_ids)}"
+    )
+
+    ev_by_art = {art.article_id: art.event_id for art in updated}
+    assert len(ev_by_art) == 3, f"[{test_label}] Duplicate article assignment detected"
+
+    assert ev_by_art[id_a] == ev_by_art[id_b], (
+        f"[{test_label}] A and B must belong to the same event"
+    )
+    assert ev_by_art[id_c] != ev_by_art[id_a], (
+        f"[{test_label}] C must belong to a separate event from A and B"
+    )
+
+    memberships = [
+        {art.article_id for art in updated if art.event_id == ev.event_id}
+        for ev in events
+    ]
+    assert {id_a, id_b} in memberships, (
+        f"[{test_label}] Expected exact cluster {{{id_a}, {id_b}}} in {memberships}"
+    )
+    assert {id_c} in memberships, (
+        f"[{test_label}] Expected exact cluster {{{id_c}}} in {memberships}"
+    )
+
+
+def test_step875_pricing_release_compatibility_unit():
+    """STEP 8.7.5: Compatibility unit tests for is_candidate_compatible_with_cluster().
+
+    Verifies:
+        - GPT-5 pricing is compatible with GPT-5 release.
+        - Claude pricing is NOT compatible with GPT-5 release (similarity 0.0).
+        - GPT-5 release is NOT compatible with Claude pricing (similarity 0.0).
+        - GPT-5 pricing is NOT compatible with Claude pricing (similarity 0.0).
+        - Disjoint model context produces similarity == 0.0 under the compatibility contract.
+    """
+    rel_art = Article(
+        article_id="unit_gpt5_rel",
+        title="OpenAI releases GPT-5 frontier AI model",
+        url="https://openai.com/gpt5-release",
+        source="OpenAI",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    prc_art = Article(
+        article_id="unit_gpt5_pricing",
+        title="OpenAI announces GPT-5 pricing and API subscription tiers",
+        url="https://theverge.com/gpt5-pricing",
+        source="The Verge",
+        category="frontier_models",
+        tags=["OpenAI", "GPT-5"],
+    )
+    cld_art = Article(
+        article_id="unit_claude_pricing",
+        title="OpenAI announces Claude model API pricing update",
+        url="https://techcrunch.com/claude-pricing",
+        source="TechCrunch",
+        category="frontier_models",
+        tags=["OpenAI", "Claude"],
+    )
+
+    articles = [rel_art, prc_art, cld_art]
+    features = [extract_clustering_features(a) for a in articles]
+    min_cohesion = DEFAULT_SIMILARITY_THRESHOLD * MIN_CLUSTER_COHESION_RATIO
+
+    # 1. GPT-5 pricing candidate (idx 1) compatible with GPT-5 release cluster [0]
+    comp, sim = is_candidate_compatible_with_cluster(
+        candidate_idx=1,
+        cluster=[0],
+        articles=articles,
+        features=features,
+        window_hours=DEFAULT_EVENT_WINDOW_HOURS,
+        similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD,
+        min_cohesion_threshold=min_cohesion,
+    )
+    assert comp is True, "GPT-5 pricing must be compatible with GPT-5 release"
+    assert sim > 0.0, "GPT-5 pricing similarity to GPT-5 release must be positive"
+
+    # 2. Claude pricing candidate (idx 2) NOT compatible with GPT-5 release cluster [0]
+    comp, sim = is_candidate_compatible_with_cluster(
+        candidate_idx=2,
+        cluster=[0],
+        articles=articles,
+        features=features,
+        window_hours=DEFAULT_EVENT_WINDOW_HOURS,
+        similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD,
+        min_cohesion_threshold=min_cohesion,
+    )
+    assert comp is False, "Claude pricing must NOT be compatible with GPT-5 release"
+    assert sim == 0.0, "Disjoint model context must yield similarity 0.0"
+
+    # 3. GPT-5 release candidate (idx 0) NOT compatible with Claude pricing cluster [2]
+    comp, sim = is_candidate_compatible_with_cluster(
+        candidate_idx=0,
+        cluster=[2],
+        articles=articles,
+        features=features,
+        window_hours=DEFAULT_EVENT_WINDOW_HOURS,
+        similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD,
+        min_cohesion_threshold=min_cohesion,
+    )
+    assert comp is False, "GPT-5 release must NOT be compatible with Claude pricing"
+    assert sim == 0.0, "Disjoint model context must yield similarity 0.0"
+
+    # 4. GPT-5 pricing candidate (idx 1) NOT compatible with Claude pricing cluster [2]
+    comp, sim = is_candidate_compatible_with_cluster(
+        candidate_idx=1,
+        cluster=[2],
+        articles=articles,
+        features=features,
+        window_hours=DEFAULT_EVENT_WINDOW_HOURS,
+        similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD,
+        min_cohesion_threshold=min_cohesion,
+    )
+    assert comp is False, "GPT-5 pricing must NOT be compatible with Claude pricing"
+    assert sim == 0.0, "Disjoint model context must yield similarity 0.0"
 
 
 def test_step874_exhaustive_permutation_clustering():
-    """Test STEP 8.7.4: Validate that clustering is deterministic across all 6 permutations
-    of input articles A, B, and C.
+    """Test STEP 8.7.4 / 8.7.5: Validate that clustering is deterministic across all 6 permutations
+    of input articles A, B, and C using freshly created fixtures per iteration.
 
     Articles:
         A: OpenAI GPT-5 release
@@ -1419,13 +1559,11 @@ def test_step874_exhaustive_permutation_clustering():
     Permutations:
         [A, B, C], [A, C, B], [B, A, C], [B, C, A], [C, A, B], [C, B, A]
 
-    Assertions for every permutation:
-        - Exactly two events are generated.
-        - A and B belong to the same event.
-        - C belongs to a separate event.
-        - No article is missing.
-        - No article belongs to more than one event.
-        - Exact membership: {A, B} and {C}.
+    Distinguishes between:
+        1. Input list order: Tested with fresh unprioritized fixtures.
+        2. Internal processing order: Controlled and verified via descending priority_score
+           so _sort_article_indices_for_clustering sequences through all 6 orders.
+        3. Final event membership: Verified to be {A, B} and {C} across all scenarios.
     """
     def _create_articles():
         a = Article(
@@ -1454,90 +1592,53 @@ def test_step874_exhaustive_permutation_clustering():
         )
         return a, b, c
 
-    a, b, c = _create_articles()
-
-    permutations = [
-        ("ABC", [a, b, c]),
-        ("ACB", [a, c, b]),
-        ("BAC", [b, a, c]),
-        ("BCA", [b, c, a]),
-        ("CAB", [c, a, b]),
-        ("CBA", [c, b, a]),
+    permutation_keys = [
+        ("ABC", ["A", "B", "C"]),
+        ("ACB", ["A", "C", "B"]),
+        ("BAC", ["B", "A", "C"]),
+        ("BCA", ["B", "C", "A"]),
+        ("CAB", ["C", "A", "B"]),
+        ("CBA", ["C", "B", "A"]),
     ]
 
-    expected_ids = {"step874_a_gpt5_rel", "step874_b_gpt5_pricing", "step874_c_claude_pricing"}
+    # 1. Test raw list permutations with fresh fixtures per iteration
+    for perm_name, keys in permutation_keys:
+        a, b, c = _create_articles()
+        article_map = {"A": a, "B": b, "C": c}
+        perm_articles = [article_map[key] for key in keys]
 
-    # 1. Test raw list permutations
-    for perm_name, perm_articles in permutations:
         events, event_articles, updated = cluster_articles(perm_articles)
-
-        assert len(events) == 2, f"[{perm_name}] Expected exactly 2 events, got {len(events)}"
-
-        # Verify no article is missing
-        assigned_ids = [art.article_id for art in updated if art.event_id]
-        assert len(assigned_ids) == 3, f"[{perm_name}] Expected 3 assigned articles, got {len(assigned_ids)}"
-        assert set(assigned_ids) == expected_ids, f"[{perm_name}] Missing articles: {expected_ids - set(assigned_ids)}"
-
-        # Verify no article belongs to more than one event
-        ev_by_art = {art.article_id: art.event_id for art in updated}
-        assert len(ev_by_art) == 3, f"[{perm_name}] Duplicate article assignment detected"
-
-        # A and B belong to the same event; C belongs to a separate event
-        assert ev_by_art["step874_a_gpt5_rel"] == ev_by_art["step874_b_gpt5_pricing"], (
-            f"[{perm_name}] A and B must belong to the same event"
-        )
-        assert ev_by_art["step874_c_claude_pricing"] != ev_by_art["step874_a_gpt5_rel"], (
-            f"[{perm_name}] C must belong to a separate event from A and B"
+        _assert_gpt5_launch_clustering_membership(
+            events, updated, f"Raw_{perm_name}", a.article_id, b.article_id, c.article_id
         )
 
-        # Exact membership using article IDs
-        memberships = [
-            {art.article_id for art in updated if art.event_id == ev.event_id}
-            for ev in events
-        ]
-        assert {"step874_a_gpt5_rel", "step874_b_gpt5_pricing"} in memberships, (
-            f"[{perm_name}] Expected exact cluster {{\"step874_a_gpt5_rel\", \"step874_b_gpt5_pricing\"}}"
-        )
-        assert {"step874_c_claude_pricing"} in memberships, (
-            f"[{perm_name}] Expected exact cluster {{\"step874_c_claude_pricing\"}}"
+    # 2. Test forced internal processing orders with fresh fixtures per iteration
+    # _sort_article_indices_for_clustering sorts by (off, priority_score, published_at, uid) descending.
+    # Assigning descending priority_scores strictly forces the internal sequential processing order.
+    for perm_name, keys in permutation_keys:
+        a, b, c = _create_articles()
+        article_map = {"A": a, "B": b, "C": c}
+        for rank, key in enumerate(keys):
+            article_map[key].priority_score = 100.0 - rank * 10.0
+
+        perm_articles = [article_map[key] for key in keys]
+
+        # Explicitly verify the intended internal processing order
+        sorted_indices = _sort_article_indices_for_clustering(perm_articles)
+        actual_order = [perm_articles[i].article_id for i in sorted_indices]
+        expected_order = [article_map[key].article_id for key in keys]
+        assert actual_order == expected_order, (
+            f"[{perm_name}] Expected processing order {expected_order}, got {actual_order}"
         )
 
-    # 2. Test forced sequential processing orders (via priority_score)
-    # This guarantees that the cluster formation loop processes articles in each permutation sequence.
-    for perm_name, perm_keys in [
-        ("Forced_ABC", ["A", "B", "C"]),
-        ("Forced_ACB", ["A", "C", "B"]),
-        ("Forced_BAC", ["B", "A", "C"]),
-        ("Forced_BCA", ["B", "C", "A"]),
-        ("Forced_CAB", ["C", "A", "B"]),
-        ("Forced_CBA", ["C", "B", "A"]),
-    ]:
-        a_f, b_f, c_f = _create_articles()
-        f_map = {"A": a_f, "B": b_f, "C": c_f}
-        for rank, key in enumerate(perm_keys):
-            f_map[key].priority_score = 100.0 - rank * 10.0
-
-        articles_to_cluster = [f_map[k] for k in perm_keys]
-        events, event_articles, updated = cluster_articles(articles_to_cluster)
-
-        assert len(events) == 2, f"[{perm_name}] Expected 2 events, got {len(events)}"
-        ev_by_art = {art.article_id: art.event_id for art in updated}
-        assert ev_by_art["step874_a_gpt5_rel"] == ev_by_art["step874_b_gpt5_pricing"], (
-            f"[{perm_name}] A and B must share event"
+        events, event_articles, updated = cluster_articles(perm_articles)
+        _assert_gpt5_launch_clustering_membership(
+            events, updated, f"Forced_{perm_name}", a.article_id, b.article_id, c.article_id
         )
-        assert ev_by_art["step874_c_claude_pricing"] != ev_by_art["step874_a_gpt5_rel"], (
-            f"[{perm_name}] C must be in separate event"
-        )
-        memberships = [
-            {art.article_id for art in updated if art.event_id == ev.event_id}
-            for ev in events
-        ]
-        assert {"step874_a_gpt5_rel", "step874_b_gpt5_pricing"} in memberships
-        assert {"step874_c_claude_pricing"} in memberships
 
 
 def test_step874_exact_chaining_scenarios():
-    """Test STEP 8.7.4: Exact chaining scenarios:
+    """Test STEP 8.7.4 / 8.7.5: Exact chaining scenarios with isolated fresh fixtures:
     1. GPT-5 release first, then GPT-5 pricing, then unrelated Claude pricing.
     2. GPT-5 pricing first, then GPT-5 release, then unrelated Claude pricing.
     3. Unrelated Claude pricing first, then GPT-5 release, then GPT-5 pricing.
@@ -1548,15 +1649,7 @@ def test_step874_exact_chaining_scenarios():
         {GPT-5 release, GPT-5 pricing}
         {Claude pricing}
     """
-    from ai_newsletter.clustering import (
-        DEFAULT_EVENT_WINDOW_HOURS,
-        DEFAULT_SIMILARITY_THRESHOLD,
-        MIN_CLUSTER_COHESION_RATIO,
-        extract_clustering_features,
-        is_candidate_compatible_with_cluster,
-    )
-
-    def _make():
+    def _create_fresh():
         return (
             Article(
                 article_id="step874_rel",
@@ -1594,7 +1687,7 @@ def test_step874_exact_chaining_scenarios():
     ]
 
     for sc_name, order_keys in chain_scenarios:
-        art_rel, art_prc, art_cld = _make()
+        art_rel, art_prc, art_cld = _create_fresh()
         art_map = {
             "step874_rel": art_rel,
             "step874_pricing": art_prc,
@@ -1603,22 +1696,14 @@ def test_step874_exact_chaining_scenarios():
         for rank, key in enumerate(order_keys):
             art_map[key].priority_score = 100.0 - rank * 10.0
 
-        events, _, updated = cluster_articles([art_rel, art_prc, art_cld])
-        assert len(events) == 2, f"[{sc_name}] Expected 2 events, got {len(events)}"
-
-        memberships = [
-            {art.article_id for art in updated if art.event_id == ev.event_id}
-            for ev in events
-        ]
-        assert {"step874_rel", "step874_pricing"} in memberships, (
-            f"[{sc_name}] Expected {{\"step874_rel\", \"step874_pricing\"}} in {memberships}"
-        )
-        assert {"step874_claude_pricing"} in memberships, (
-            f"[{sc_name}] Expected {{\"step874_claude_pricing\"}} in {memberships}"
+        articles_to_cluster = [art_map[k] for k in order_keys]
+        events, _, updated = cluster_articles(articles_to_cluster)
+        _assert_gpt5_launch_clustering_membership(
+            events, updated, sc_name, "step874_rel", "step874_pricing", "step874_claude_pricing"
         )
 
-    # In-depth compatibility verification for Scenarios 4 and 5
-    art_rel, art_prc, art_cld = _make()
+    # In-depth compatibility verification for Scenarios 4 and 5 with fresh fixtures
+    art_rel, art_prc, art_cld = _create_fresh()
     articles = [art_rel, art_prc, art_cld]  # idx 0: rel, 1: pricing, 2: claude_pricing
     features = [extract_clustering_features(a) for a in articles]
     min_cohesion = DEFAULT_SIMILARITY_THRESHOLD * MIN_CLUSTER_COHESION_RATIO
@@ -1670,6 +1755,7 @@ def test_step874_exact_chaining_scenarios():
     assert sim_to_prc > 0.0, "Scenario 5: similarity must be positive"
     assert comp_rel_to_claude is False, "Scenario 5: GPT-5 release candidate must NOT be compatible with Claude pricing cluster"
     assert sim_rel_to_claude == 0.0, "Scenario 5: similarity must be 0.0"
+
 
 
 
